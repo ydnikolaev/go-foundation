@@ -6,3 +6,4 @@ Who uses which unit at which version: the host registry's foundation-consumers.m
 | unit | kind | stability | import path | pairs | summary |
 |---|---|---|---|---|---|
 | [`adoption`](units/adoption/README.md) | module | experimental | `github.com/ydnikolaev/go-foundation/units/adoption` | - | What a tool's releases still ask of a consuming repository: release-note obligations, a committed per-repo clock, detects, the per-verb notice and the clock-file git probe. |
+| [`agentdocs`](units/agentdocs/README.md) | module | experimental | `github.com/ydnikolaev/go-foundation/units/agentdocs` | - | A CLI's embedded agent docs: the manifest and topics, install with a provenance stamp, install drift for a doctor row, the verified agent-runtime surface rows and their link, the context-file pointer block, and a staleness check for generated files. |

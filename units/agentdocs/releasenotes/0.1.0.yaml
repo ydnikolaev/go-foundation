@@ -1,0 +1,21 @@
+# Adoption notes for consumers of this unit, in the adoption unit's schema.
+schema: go-foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-08
+headline: First release, ported from a2ahub skill/, internal/surface and internal/cli at 802fc17a
+changes:
+  - id: AGENTDOCS-0100-1
+    kind: feat
+    impact: high
+    subject: Embedded agent docs as a shared unit
+    detail: >-
+      LoadManifest, Topics, Resolve, TopicFor, Read and WorkflowLine over an embedded tree;
+      Install and Installed with a PROVENANCE.md stamp namespaced by Tool.ID (Install refuses an
+      empty ID) and a Severity; Drift for the installed tree's missing, modified and unexpected
+      files; Surfaces, Detect and Link
+      for the claude, codex and dsh runtimes; UpsertPointer for a context file; Stale for generated
+      files. Install parity measured on a2ahub's real skill tree against `a2a skill install`:
+      same file set and bytes, and the same marker line; PROVENANCE.md's prose aside.
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

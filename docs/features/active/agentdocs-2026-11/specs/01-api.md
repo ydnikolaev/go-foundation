@@ -27,6 +27,8 @@ func WorkflowLine(t Tool, topic string) string                   // "workflow: r
 func Install(tree fs.FS, dir, target string, t Tool, force bool) (written int, err error) // ErrForeignTarget
 type InstallStatus struct{ State State; Version string }        // None, Foreign, Dev, Behind, Current, Ahead
 func Installed(target string, t Tool) InstallStatus              // .Severity(): OK, Warn, Fail, as adoption.ClockFile
+type TreeDrift struct{ Total int; Missing, Modified, Unexpected []string; Undecidable string }
+func Drift(tree fs.FS, dir, target string) (TreeDrift, error)   // root PROVENANCE.md exempt; severity is the caller's
 
 // Agent surfaces
 type Surface struct{ ID, SkillsHome, ContextFile string; ReadsAgentsMD bool; SourceURL, VerifiedOn string }
