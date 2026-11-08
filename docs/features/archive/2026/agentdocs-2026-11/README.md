@@ -24,3 +24,11 @@ a2a's own tree through the unit yields the same files a2a writes today.
 
 - P-PORT: once R-8 is ruled, port test-first with parity against a2ahub, release v0.1.0
   (unit-release.sh, public-scan, tag per R-7), hand the tag to the first consumer.
+
+## Outcome
+
+Shipped 2026-11-08 as `units/agentdocs/v0.2.0` (v0.1.0 superseded the same day: it followed symlinks out of the
+repository; 0.2.0 keeps every read and write inside the caller's root through `os.Root`). Parity on a2ahub's real
+tree against `a2a skill install`: 38 files each side, byte-identical but for PROVENANCE.md's prose, the same marker
+line; an existing a2a install reads as Dev, not foreign. Not done here: a2a's own switch to the unit, and an
+exported sentinel for a root escape (callers see an `*Error` naming the path).

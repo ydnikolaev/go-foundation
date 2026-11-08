@@ -1,13 +1,13 @@
 epic: agentdocs-2026-11
 title: agentdocs — embedded agent docs as a shared unit
-status: discovery
+status: done
 owner: Yura Nikolaev
 started: '2026-11-08'
 goal: 'units/agentdocs v0.1.0 ships a tool''s agent docs in its binary and into any repository it serves, ported from a2a with parity'
 phases:
 - id: P-PORT
   title: Port agentdocs from a2ahub test-first with parity, release v0.1.0
-  status: spec-ready
+  status: done
   wave: 1
   depends_on: []
   area: [units/agentdocs/**]
