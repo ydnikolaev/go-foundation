@@ -1,6 +1,8 @@
 package agentdocs
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,13 +77,19 @@ func ByID(id string) (Surface, bool) {
 func (s Surface) MarkerDir() string { return filepath.Dir(s.SkillsHome) }
 
 // Detect returns every row whose MarkerDir exists as a directory under root,
-// in Surfaces' order. It is best-effort and never fails: a missing root or an
-// unreadable entry is simply not detected. It never invents a harness
-// directory a repository has not opted into.
+// in Surfaces' order. It is best-effort and never fails: a missing root, an
+// unreadable entry, or a marker directory that links out of root is simply
+// not detected. It never invents a harness directory a repository has not
+// opted into.
 func Detect(root string) []Surface {
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = r.Close() }()
 	var found []Surface
 	for _, s := range Surfaces() {
-		info, err := os.Stat(filepath.Join(root, s.MarkerDir()))
+		info, err := r.Stat(s.MarkerDir())
 		if err != nil || !info.IsDir() {
 			continue
 		}
@@ -113,7 +121,7 @@ type LinkResult struct {
 }
 
 // symlink is a seam so a test can force the stub fallback.
-var symlink = os.Symlink
+var symlink = func(r *os.Root, oldname, newname string) error { return r.Symlink(oldname, newname) }
 
 // linkMarker is the line a stub SKILL.md carries: "<!-- <name>-skill-link -->".
 func linkMarker(name string) string { return "<!-- " + name + "-skill-link -->" }
@@ -126,14 +134,37 @@ func linkMarker(name string) string { return "<!-- " + name + "-skill-link -->" 
 // target, or carries the link marker; it is then replaced. Any other existing
 // entry wraps ErrForeignTarget and nothing is written, unless force is set.
 // A name that is not one path element wraps ErrInvalidName.
+//
+// Nothing Link touches leaves root, symlinks included: a skills home that
+// links out of root, or a target outside it (lexically, or through a
+// symlink), is refused with an *Error naming it. A skills home that is a
+// symlink inside root works, and the relative link is computed from where the
+// entry really lands. An existing entry that links out of root is foreign,
+// and force replaces the link without following it.
 func Link(root string, s Surface, name, target string, force bool) (LinkResult, error) {
 	if name == "" || name == "." || name == ".." || strings.ContainsAny(name, `/\`) {
 		return LinkResult{}, &Error{Op: "Link", Input: name, Err: ErrInvalidName}
 	}
-	entry := filepath.Join(root, s.SkillsHome, name)
+	if err := local("Link", target); err != nil {
+		return LinkResult{}, err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return LinkResult{}, &Error{Op: "Link", Input: root, Err: err}
+	}
+	defer func() { _ = r.Close() }()
+	// The target may not exist yet; it may not resolve out of root.
+	if _, err := r.Stat(target); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return LinkResult{}, &Error{Op: "Link", Input: target, Err: err}
+	}
+	home, err := resolve(r, s.SkillsHome)
+	if err != nil {
+		return LinkResult{}, &Error{Op: "Link", Input: s.SkillsHome, Err: err}
+	}
+	entry := filepath.Join(home, name)
 	rel := filepath.Join(s.SkillsHome, name)
 
-	exists, owned, err := linkState(root, entry, name, target)
+	exists, owned, err := linkState(r, entry, name, target)
 	if err != nil {
 		return LinkResult{}, &Error{Op: "Link", Input: entry, Err: err}
 	}
@@ -141,27 +172,26 @@ func Link(root string, s Surface, name, target string, force bool) (LinkResult, 
 		return LinkResult{}, &Error{Op: "Link", Input: entry, Err: ErrForeignTarget}
 	}
 	if exists {
-		if err := os.RemoveAll(entry); err != nil {
+		if err := r.RemoveAll(entry); err != nil {
 			return LinkResult{}, &Error{Op: "Link", Input: entry, Err: err}
 		}
 	}
-	home := filepath.Join(root, s.SkillsHome)
-	if err := os.MkdirAll(home, 0o755); err != nil {
+	if err := r.MkdirAll(home, 0o755); err != nil {
 		return LinkResult{}, &Error{Op: "Link", Input: home, Err: err}
 	}
 
-	if dest, relErr := filepath.Rel(filepath.Dir(entry), filepath.Join(root, target)); relErr == nil {
-		if symlink(dest, entry) == nil {
+	if dest, relErr := filepath.Rel(home, target); relErr == nil {
+		if symlink(r, dest, entry) == nil {
 			return LinkResult{Surface: s, Path: rel, Mode: LinkSymlink}, nil
 		}
 	}
 
 	// Stub fallback. Only this branch creates the entry as a directory: a
 	// directory made before the symlink would make the symlink fail.
-	if err := os.MkdirAll(entry, 0o755); err != nil {
+	if err := r.MkdirAll(entry, 0o755); err != nil {
 		return LinkResult{}, &Error{Op: "Link", Input: entry, Err: err}
 	}
-	if err := os.WriteFile(filepath.Join(entry, "SKILL.md"), []byte(linkStub(s, name, target)), 0o644); err != nil {
+	if err := r.WriteFile(filepath.Join(entry, "SKILL.md"), []byte(linkStub(s, name, target)), 0o644); err != nil {
 		return LinkResult{}, &Error{Op: "Link", Input: entry, Err: err}
 	}
 	return LinkResult{Surface: s, Path: rel, Mode: LinkStub}, nil
@@ -182,47 +212,37 @@ func linkStub(s Surface, name, target string) string {
 		" could not be created on this filesystem. Read `" + skillMD + "` (repo root).\n"
 }
 
-// linkState inspects an existing or absent entry. An unreadable or
-// unresolvable symlink, or a missing marker, is foreign, not an error; err is
-// only a genuine filesystem failure.
-func linkState(root, entry, name, target string) (exists, owned bool, err error) {
-	info, err := os.Lstat(entry)
+// linkState inspects an existing or absent entry, a resolved path inside r.
+// An unreadable or unresolvable symlink, one that links out of the root, or a
+// missing marker, is foreign, not an error; err is only a genuine filesystem
+// failure.
+func linkState(r *os.Root, entry, name, target string) (exists, owned bool, err error) {
+	info, err := r.Lstat(entry)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return false, false, nil
 		}
 		return false, false, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		dest, err := os.Readlink(entry)
-		if err != nil {
+		dest, err := r.Readlink(entry)
+		if err != nil || filepath.IsAbs(dest) {
 			return true, false, nil
 		}
-		if !filepath.IsAbs(dest) {
-			dest = filepath.Join(filepath.Dir(entry), dest)
-		}
-		dest, err = filepath.Abs(filepath.Clean(dest))
-		if err != nil {
-			return true, false, nil
-		}
-		want, err := filepath.Abs(filepath.Clean(filepath.Join(root, target)))
-		if err != nil {
-			return true, false, err
-		}
-		// Compare canonical destinations when both exist; keep the clean
-		// absolute comparison for a target that is temporarily missing.
-		if d, err := filepath.EvalSymlinks(dest); err == nil {
-			if w, err := filepath.EvalSymlinks(want); err == nil {
-				return true, d == w, nil
+		// The same file when both resolve inside the root; otherwise the
+		// lexical destination, for a target that is temporarily missing.
+		if d, err := r.Stat(entry); err == nil {
+			if w, err := r.Stat(target); err == nil {
+				return true, os.SameFile(d, w), nil
 			}
 		}
-		return true, dest == want, nil
+		return true, filepath.Join(filepath.Dir(entry), dest) == filepath.Clean(target), nil
 	}
 	stub := entry
 	if info.IsDir() {
 		stub = filepath.Join(entry, "SKILL.md")
 	}
-	data, err := os.ReadFile(stub)
+	data, err := r.ReadFile(stub)
 	if err != nil {
 		return true, false, nil
 	}

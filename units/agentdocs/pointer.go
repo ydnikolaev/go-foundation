@@ -2,12 +2,17 @@ package agentdocs
 
 import (
 	"bytes"
+	"crypto/rand"
+	"errors"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
-// UpsertPointer writes body into path as one block delimited by
-// "<!-- <name>:pointer:start -->" and "<!-- <name>:pointer:end -->".
+// UpsertPointer writes body into path, a file inside root, as one block
+// delimited by "<!-- <name>:pointer:start -->" and
+// "<!-- <name>:pointer:end -->".
 //
 // An absent file is created holding the block. A file without the block gets
 // it appended after one blank line. A file with the block gets that block
@@ -21,7 +26,14 @@ import (
 // and nothing is written. Whether to touch a file at all (a CLAUDE.md that
 // already imports @AGENTS.md, a CLAUDE.md that does not exist) is the
 // caller's policy.
-func UpsertPointer(path, name, body string) (changed bool, err error) {
+//
+// Nothing UpsertPointer touches leaves root, symlinks included. A path that
+// is a symlink inside root (CLAUDE.md -> AGENTS.md) writes the file it points
+// at and stays a symlink; one that leads out of root, or a path that climbs
+// out, is refused with an *Error naming it. The file is replaced through a
+// temporary file and a rename in its own directory, so a crash never leaves
+// half a file, and it keeps its permission bits.
+func UpsertPointer(root, path, name, body string) (changed bool, err error) {
 	start := "<!-- " + name + ":pointer:start -->"
 	end := "<!-- " + name + ":pointer:end -->"
 	startPrefix := "<!-- " + name + ":pointer:start"
@@ -33,8 +45,20 @@ func UpsertPointer(path, name, body string) (changed bool, err error) {
 	}
 	block := []byte(start + "\n" + body + end)
 
-	existing, err := os.ReadFile(path)
-	if err != nil && !os.IsNotExist(err) {
+	if err := local("UpsertPointer", path); err != nil {
+		return false, err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return false, &Error{Op: "UpsertPointer", Input: root, Err: err}
+	}
+	defer func() { _ = r.Close() }()
+	file, err := resolve(r, path)
+	if err != nil {
+		return false, &Error{Op: "UpsertPointer", Input: path, Err: err}
+	}
+	existing, err := r.ReadFile(file)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return false, &Error{Op: "UpsertPointer", Input: path, Err: err}
 	}
 
@@ -62,10 +86,45 @@ func UpsertPointer(path, name, body string) (changed bool, err error) {
 	if bytes.Equal(out, existing) {
 		return false, nil
 	}
-	if err := os.WriteFile(path, out, 0o644); err != nil {
+	if err := replaceFile(r, file, out); err != nil {
 		return false, &Error{Op: "UpsertPointer", Input: path, Err: err}
 	}
 	return true, nil
+}
+
+// replaceFile writes data to name inside r through a temporary file in the
+// same directory and a rename, keeping name's permission bits (0644 for a new
+// file). The rename replaces name itself, so name must already be resolved
+// past any symlink. The temporary file is removed on any failure.
+func replaceFile(r *os.Root, name string, data []byte) (err error) {
+	perm := fs.FileMode(0o644)
+	if info, statErr := r.Stat(name); statErr == nil {
+		perm = info.Mode().Perm()
+	}
+	tmp := filepath.Join(filepath.Dir(name), "."+filepath.Base(name)+"."+rand.Text()+".tmp")
+	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			_ = f.Close()
+			_ = r.Remove(tmp)
+		}
+	}()
+	if _, err = f.Write(data); err != nil {
+		return err
+	}
+	if err = f.Chmod(perm); err != nil { // the umask applied at create
+		return err
+	}
+	if err = f.Sync(); err != nil {
+		return err
+	}
+	if err = f.Close(); err != nil {
+		return err
+	}
+	return r.Rename(tmp, name)
 }
 
 // findStarts returns the [begin, end) span of every start marker: prefix

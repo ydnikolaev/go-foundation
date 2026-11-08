@@ -89,7 +89,7 @@ func assertTreeMatches(t *testing.T, tree fs.FS, dir, target string) {
 
 func mustInstall(t *testing.T, target string, tl agentdocs.Tool) int {
 	t.Helper()
-	n, err := agentdocs.Install(docTree(), "mytool", target, tl, false)
+	n, err := install(docTree(), "mytool", target, tl, false)
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
@@ -108,7 +108,10 @@ func TestInstallCleanRepo(t *testing.T) {
 	mustWrite(t, mine, "my own skill\n")
 
 	target := filepath.Join(repo, ".mytool", "skill")
-	n := mustInstall(t, target, tool)
+	n, err := agentdocs.Install(docTree(), "mytool", repo, filepath.Join(".mytool", "skill"), tool, false)
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
 	if n != 4 {
 		t.Errorf("written = %d, want 4 (the tree's files; PROVENANCE.md is not counted)", n)
 	}
@@ -154,7 +157,7 @@ func TestInstallRefusesForeignTarget(t *testing.T) {
 	foreign := filepath.Join(target, "user-file.md")
 	mustWrite(t, foreign, "do not touch\n")
 
-	_, err := agentdocs.Install(docTree(), "mytool", target, tool, false)
+	_, err := install(docTree(), "mytool", target, tool, false)
 	if !errors.Is(err, agentdocs.ErrForeignTarget) {
 		t.Fatalf("Install(foreign) = %v, want ErrForeignTarget", err)
 	}
@@ -165,7 +168,7 @@ func TestInstallRefusesForeignTarget(t *testing.T) {
 		t.Fatal("SKILL.md written into a refused target")
 	}
 
-	if _, err := agentdocs.Install(docTree(), "mytool", target, tool, true); err != nil {
+	if _, err := install(docTree(), "mytool", target, tool, true); err != nil {
 		t.Fatalf("Install(force) = %v", err)
 	}
 	assertTreeMatches(t, docTree(), "mytool", target)
@@ -176,7 +179,7 @@ func TestInstallRefusesAnotherToolsInstall(t *testing.T) {
 	t.Parallel()
 	target := t.TempDir()
 	mustInstall(t, target, withTool(func(t *agentdocs.Tool) { t.ID = "othertool" }))
-	_, err := agentdocs.Install(docTree(), "mytool", target, tool, false)
+	_, err := install(docTree(), "mytool", target, tool, false)
 	if !errors.Is(err, agentdocs.ErrForeignTarget) {
 		t.Fatalf("Install over another tool's install = %v, want ErrForeignTarget", err)
 	}
@@ -198,11 +201,11 @@ func TestInstallMarkerIsTheToolID(t *testing.T) {
 		t.Fatalf("Name must be the prose, never the marker:\n%s", s)
 	}
 	// A refresh by the same tool is owned through the ID, not the Name.
-	if _, err := agentdocs.Install(docTree(), "mytool", target, a2a, false); err != nil {
+	if _, err := install(docTree(), "mytool", target, a2a, false); err != nil {
 		t.Fatalf("refresh by the same ID = %v, want nil", err)
 	}
 	// Same Name, different ID: not ours.
-	if _, err := agentdocs.Install(docTree(), "mytool", target, withTool(func(t *agentdocs.Tool) { t.Name = "a2a" }), false); !errors.Is(err, agentdocs.ErrForeignTarget) {
+	if _, err := install(docTree(), "mytool", target, withTool(func(t *agentdocs.Tool) { t.Name = "a2a" }), false); !errors.Is(err, agentdocs.ErrForeignTarget) {
 		t.Fatalf("Install with the same Name and another ID = %v, want ErrForeignTarget", err)
 	}
 }
@@ -212,7 +215,7 @@ func TestInstallMarkerIsTheToolID(t *testing.T) {
 func TestInstallRefusesAnEmptyID(t *testing.T) {
 	t.Parallel()
 	target := filepath.Join(t.TempDir(), "skill")
-	_, err := agentdocs.Install(docTree(), "mytool", target, withTool(func(t *agentdocs.Tool) { t.ID = "" }), false)
+	_, err := install(docTree(), "mytool", target, withTool(func(t *agentdocs.Tool) { t.ID = "" }), false)
 	if !errors.Is(err, agentdocs.ErrToolID) {
 		t.Fatalf("Install(empty ID) = %v, want ErrToolID", err)
 	}
@@ -260,7 +263,7 @@ func TestInstallWritesOnlyUnderTarget(t *testing.T) {
 	target := filepath.Join(repo, "skill")
 	mustInstall(t, target, tool)
 	mustInstall(t, target, tool)
-	if _, err := agentdocs.Install(docTree(), "mytool", target, tool, true); err != nil {
+	if _, err := install(docTree(), "mytool", target, tool, true); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(repo)
@@ -281,7 +284,7 @@ func TestInstallUnknownDirKeepsTheInstall(t *testing.T) {
 	t.Parallel()
 	target := t.TempDir()
 	mustInstall(t, target, tool)
-	_, err := agentdocs.Install(docTree(), "no-such-dir", target, tool, false)
+	_, err := install(docTree(), "no-such-dir", target, tool, false)
 	if !errors.Is(err, agentdocs.ErrTreeMissing) {
 		t.Fatalf("Install(unknown dir) = %v, want ErrTreeMissing", err)
 	}
@@ -293,7 +296,7 @@ func TestInstallWholeTree(t *testing.T) {
 	t.Parallel()
 	target := t.TempDir()
 	tree := fstest.MapFS{"SKILL.md": {Data: []byte("x\n")}, "ref/a.md": {Data: []byte("a\n")}}
-	n, err := agentdocs.Install(tree, ".", target, tool, false)
+	n, err := install(tree, ".", target, tool, false)
 	if err != nil || n != 2 {
 		t.Fatalf("Install(.) = %d, %v; want 2 files", n, err)
 	}

@@ -28,7 +28,7 @@ func driftTree() fstest.MapFS {
 func installedDrift(t *testing.T) string {
 	t.Helper()
 	target := filepath.Join(t.TempDir(), "skill")
-	if _, err := agentdocs.Install(driftTree(), "mytool", target, tool, false); err != nil {
+	if _, err := install(driftTree(), "mytool", target, tool, false); err != nil {
 		t.Fatal(err)
 	}
 	return target
@@ -36,7 +36,7 @@ func installedDrift(t *testing.T) string {
 
 func mustDrift(t *testing.T, target string) agentdocs.TreeDrift {
 	t.Helper()
-	d, err := agentdocs.Drift(driftTree(), "mytool", target)
+	d, err := drift(driftTree(), "mytool", target)
 	if err != nil {
 		t.Fatalf("Drift: %v", err)
 	}
@@ -71,11 +71,11 @@ func TestDriftWholeTree(t *testing.T) {
 	t.Parallel()
 	tree := fstest.MapFS{"SKILL.md": {Data: []byte("x\n")}, "ref/a.md": {Data: []byte("a\n")}}
 	target := t.TempDir()
-	if _, err := agentdocs.Install(tree, ".", target, tool, false); err != nil {
+	if _, err := install(tree, ".", target, tool, false); err != nil {
 		t.Fatal(err)
 	}
 	mustWrite(t, filepath.Join(target, "ref", "a.md"), "edited\n")
-	got, err := agentdocs.Drift(tree, ".", target)
+	got, err := drift(tree, ".", target)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +136,7 @@ func TestDriftHandEditedOwnedTree(t *testing.T) {
 	mustWrite(t, filepath.Join(target, "SKILL.md"), "hand-edited, ignoring the do-not-edit notice\n")
 	got := mustDrift(t, target)
 	assertDrift(t, got, nil, []string{"SKILL.md"}, nil)
-	if st := agentdocs.Installed(target, tool); st.State != agentdocs.StateCurrent {
+	if st := installed(target, tool); st.State != agentdocs.StateCurrent {
 		t.Fatalf("Installed = %v; the stamp still names this binary, which is what makes the drift a contradiction", st.State)
 	}
 }
@@ -161,8 +161,10 @@ func TestDriftOutputStability(t *testing.T) {
 
 // Ported: Undecidable. A disk file that is present but cannot be read is
 // undecidable, named, and never classified; the walk stops there. A dangling
-// symlink stands in for the unreadable file, so the test needs no
-// permission bits and holds when run as root.
+// relative symlink stands in for the unreadable file, so the test needs no
+// permission bits and holds when run as root. (An absolute one would be
+// refused for escaping the root, which TestDriftLinkOutOfTheRootIsUndecidable
+// covers on its own.)
 func TestDriftUndecidable(t *testing.T) {
 	t.Parallel()
 	target := installedDrift(t)
@@ -173,7 +175,7 @@ func TestDriftUndecidable(t *testing.T) {
 	if err := os.Remove(p); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(filepath.Join(target, "does-not-exist"), p); err != nil {
+	if err := os.Symlink("does-not-exist", p); err != nil {
 		t.Fatal(err)
 	}
 	got := mustDrift(t, target)
@@ -200,7 +202,7 @@ func TestDriftMissingTargetIsUndecidable(t *testing.T) {
 // The error is reserved for the tree side: a dir the tree does not hold.
 func TestDriftUnknownDirIsAnError(t *testing.T) {
 	t.Parallel()
-	_, err := agentdocs.Drift(driftTree(), "no-such-dir", installedDrift(t))
+	_, err := drift(driftTree(), "no-such-dir", installedDrift(t))
 	if !errors.Is(err, agentdocs.ErrTreeMissing) {
 		t.Fatalf("Drift(unknown dir) = %v, want ErrTreeMissing", err)
 	}
@@ -217,7 +219,7 @@ func TestDriftSortsEveryClass(t *testing.T) {
 		tree["d/"+stem+".md"] = &fstest.MapFile{Data: []byte("y\n")}
 	}
 	target := t.TempDir()
-	if _, err := agentdocs.Install(tree, "d", target, tool, false); err != nil {
+	if _, err := install(tree, "d", target, tool, false); err != nil {
 		t.Fatal(err)
 	}
 	for _, rel := range []string{"a.md", "a/x.md"} {
@@ -234,7 +236,7 @@ func TestDriftSortsEveryClass(t *testing.T) {
 		unexpected = append(unexpected, rel)
 		mustWrite(t, filepath.Join(target, rel), "mine\n")
 	}
-	got, err := agentdocs.Drift(tree, "d", target)
+	got, err := drift(tree, "d", target)
 	if err != nil {
 		t.Fatal(err)
 	}

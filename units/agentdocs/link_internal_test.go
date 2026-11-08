@@ -24,7 +24,7 @@ func TestLinkSymlinkFallbackToStub(t *testing.T) {
 	claude, _ := ByID("claude")
 
 	orig := symlink
-	symlink = func(string, string) error { return errors.New("simulated: symlinks unavailable") }
+	symlink = func(*os.Root, string, string) error { return errors.New("simulated: symlinks unavailable") }
 	t.Cleanup(func() { symlink = orig })
 
 	result, err := Link(root, claude, "mytool", ssot, false)

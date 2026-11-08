@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"io/fs"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -40,36 +41,41 @@ func (d TreeDrift) HasDiff() bool { return d.Count() > 0 }
 // Count is the number of classified files across the three classes.
 func (d TreeDrift) Count() int { return len(d.Missing) + len(d.Modified) + len(d.Unexpected) }
 
-// Drift compares the target an Install wrote against tree's dir subtree,
-// stripping dir the same way Install does. It only reads. A disk-side
-// failure is reported through Undecidable, never as an error; the error is
-// reserved for the tree side, and a dir the tree does not hold wraps
-// ErrTreeMissing.
+// Drift compares the target an Install wrote, a path inside root, against
+// tree's dir subtree, stripping dir the same way Install does. It only reads,
+// and only inside root. A disk-side failure is reported through Undecidable,
+// never as an error: a root that cannot be opened, a target reached through a
+// symlink out of root, or a file in it that links out. The error is reserved
+// for the arguments: a dir the tree does not hold wraps ErrTreeMissing, and a
+// target that climbs out of root is refused naming it.
 //
 // How severe drift is stays the caller's call. a2a's doctor fails a Current
 // install that drifts (the stamp names this binary, so the tree contradicts
 // it) and only notes drift on a Dev install.
-func Drift(tree fs.FS, dir, target string) (TreeDrift, error) {
+func Drift(tree fs.FS, dir, root, target string) (TreeDrift, error) {
 	if info, statErr := fs.Stat(tree, dir); statErr != nil || !info.IsDir() {
 		return TreeDrift{}, &Error{Op: "Drift", Input: dir, Err: ErrTreeMissing}
 	}
+	if err := local("Drift", target); err != nil {
+		return TreeDrift{}, err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return TreeDrift{Undecidable: "."}, nil
+	}
+	defer func() { _ = r.Close() }()
+	disk := r.FS()
+	base := path.Clean(filepath.ToSlash(target))
 	var res TreeDrift
 
 	onDisk := map[string]bool{}
-	walkErr := filepath.WalkDir(target, func(p string, d fs.DirEntry, err error) error {
-		rel, relErr := filepath.Rel(target, p)
-		if err != nil || relErr != nil {
-			if relErr != nil {
-				rel = p
-			}
-			res.Undecidable = filepath.ToSlash(rel)
-			return filepath.SkipAll
+	walkErr := fs.WalkDir(disk, base, func(p string, d fs.DirEntry, err error) error {
+		rel := under(base, p)
+		if err != nil {
+			res.Undecidable = rel
+			return fs.SkipAll
 		}
-		if d.IsDir() {
-			return nil
-		}
-		rel = filepath.ToSlash(rel)
-		if rel == ProvenanceFile {
+		if d.IsDir() || rel == ProvenanceFile {
 			return nil
 		}
 		onDisk[rel] = true
@@ -103,7 +109,7 @@ func Drift(tree fs.FS, dir, target string) (TreeDrift, error) {
 			return nil
 		}
 		delete(onDisk, rel)
-		got, undecidable := readDisk(filepath.Join(target, filepath.FromSlash(rel)))
+		got, undecidable := readDisk(r, filepath.Join(target, filepath.FromSlash(rel)))
 		if undecidable {
 			res.Undecidable = rel
 			return fs.SkipAll
@@ -129,14 +135,27 @@ func Drift(tree fs.FS, dir, target string) (TreeDrift, error) {
 	return res, nil
 }
 
-// readDisk reads path, telling a file that is present but unreadable (a
-// dangling symlink, a permission denial) apart from one Lstat cannot find.
-// The first is undecidable, never reclassified as missing.
-func readDisk(path string) (data []byte, undecidable bool) {
-	if _, err := os.Lstat(path); err != nil {
+// under is p relative to base, both slash paths from one fs.WalkDir.
+func under(base, p string) string {
+	switch {
+	case p == base:
+		return "."
+	case base == ".":
+		return p
+	default:
+		return strings.TrimPrefix(p, base+"/")
+	}
+}
+
+// readDisk reads name inside r, telling a file that is present but
+// unreadable (a dangling symlink, one that links out of the root, a
+// permission denial) apart from one Lstat cannot find. The first is
+// undecidable, never reclassified as missing.
+func readDisk(r *os.Root, name string) (data []byte, undecidable bool) {
+	if _, err := r.Lstat(name); err != nil {
 		return nil, false
 	}
-	data, err := os.ReadFile(path)
+	data, err := r.ReadFile(name)
 	if err != nil {
 		return nil, true
 	}

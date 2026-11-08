@@ -20,6 +20,10 @@
 // block in a context file such as AGENTS.md. Stale names the generated files
 // in a tree that no longer match what the generator writes.
 //
+// Every function that touches the disk takes the root the caller names and
+// paths inside it, and reaches the disk only through an os.Root on that root:
+// a symlink inside the root is followed, one that leaves it is refused.
+//
 // Content, CLI wiring, doctor wording and the reference generator stay with
 // each tool; whether init or an explicit verb calls Install is the tool's
 // choice.

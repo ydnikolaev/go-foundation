@@ -3,7 +3,10 @@ package agentdocs
 import "errors"
 
 // Sentinel errors, one per failure class. Every exported operation returns an
-// *Error wrapping one of them, so callers use errors.Is.
+// *Error, wrapping one of these for its own failures so callers use
+// errors.Is. A path that leaves the root is the exception: os.Root's refusal
+// has no exported sentinel, so that *Error names the path and says it
+// escapes, and is recognized as a refusal like any other filesystem error.
 var (
 	// ErrManifestInvalid is a manifest that cannot be read or decoded, names
 	// an unknown schema, declares no groups or no sections, or lists one

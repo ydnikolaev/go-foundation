@@ -34,12 +34,12 @@ func TestInstalledNoneIsOK(t *testing.T) {
 	t.Parallel()
 	t.Run("absent", func(t *testing.T) {
 		t.Parallel()
-		got := agentdocs.Installed(filepath.Join(t.TempDir(), "never-installed"), tool)
+		got := installed(filepath.Join(t.TempDir(), "never-installed"), tool)
 		assertStatus(t, got, agentdocs.StateNone, "", agentdocs.SeverityOK)
 	})
 	t.Run("empty", func(t *testing.T) {
 		t.Parallel()
-		got := agentdocs.Installed(t.TempDir(), tool)
+		got := installed(t.TempDir(), tool)
 		assertStatus(t, got, agentdocs.StateNone, "", agentdocs.SeverityOK)
 	})
 }
@@ -49,7 +49,7 @@ func TestInstalledNoneIsOK(t *testing.T) {
 func TestInstalledBehindIsWarn(t *testing.T) {
 	t.Parallel()
 	target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.Version, t.Comparable = "1.3.0", "1.3.0" }))
-	assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateBehind, "1.3.0", agentdocs.SeverityWarn)
+	assertStatus(t, installed(target, tool), agentdocs.StateBehind, "1.3.0", agentdocs.SeverityWarn)
 }
 
 // Ported: TestDoctorCheckSkillManualCurrent_StampNewerThanBinary: a copy
@@ -57,7 +57,7 @@ func TestInstalledBehindIsWarn(t *testing.T) {
 func TestInstalledAheadIsWarn(t *testing.T) {
 	t.Parallel()
 	target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.Version, t.Comparable = "1.5.0", "1.5.0" }))
-	assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateAhead, "1.5.0", agentdocs.SeverityWarn)
+	assertStatus(t, installed(target, tool), agentdocs.StateAhead, "1.5.0", agentdocs.SeverityWarn)
 }
 
 // Ported: TestDoctorCheckSkillManualCurrent_UpToDate_Clean (stamp half; the
@@ -69,7 +69,7 @@ func TestInstalledRoundTripIsCurrent(t *testing.T) {
 	for _, v := range []string{"1.4.0", "0.23.0", "0.0.1", "v2.0.0-rc.1"} {
 		tl := withTool(func(t *agentdocs.Tool) { t.Version, t.Comparable = v+" (local, abc)", v })
 		target := installedBy(t, tl)
-		assertStatus(t, agentdocs.Installed(target, tl), agentdocs.StateCurrent, v, agentdocs.SeverityOK)
+		assertStatus(t, installed(target, tl), agentdocs.StateCurrent, v, agentdocs.SeverityOK)
 	}
 }
 
@@ -81,17 +81,17 @@ func TestInstalledComparesOnlyComparable(t *testing.T) {
 	t.Run("display differs, comparable equal", func(t *testing.T) {
 		t.Parallel()
 		target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.Version = "1.4.0 (local, ffffff)" }))
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateCurrent, "1.4.0", agentdocs.SeverityOK)
+		assertStatus(t, installed(target, tool), agentdocs.StateCurrent, "1.4.0", agentdocs.SeverityOK)
 	})
 	t.Run("display equal, comparable differs", func(t *testing.T) {
 		t.Parallel()
 		target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.Comparable = "1.3.0" }))
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateBehind, "1.3.0", agentdocs.SeverityWarn)
+		assertStatus(t, installed(target, tool), agentdocs.StateBehind, "1.3.0", agentdocs.SeverityWarn)
 	})
 	t.Run("display looks like a version, comparable empty", func(t *testing.T) {
 		t.Parallel()
 		target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.Version, t.Comparable = "1.4.0", "" }))
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+		assertStatus(t, installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 	})
 }
 
@@ -103,15 +103,15 @@ func TestInstalledEmptyComparableOnEitherSideIsDev(t *testing.T) {
 	dev := withTool(func(t *agentdocs.Tool) { t.Version, t.Comparable = "dev", "" })
 	t.Run("stamp side", func(t *testing.T) {
 		t.Parallel()
-		assertStatus(t, agentdocs.Installed(installedBy(t, dev), tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+		assertStatus(t, installed(installedBy(t, dev), tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 	})
 	t.Run("binary side", func(t *testing.T) {
 		t.Parallel()
-		assertStatus(t, agentdocs.Installed(installedBy(t, tool), dev), agentdocs.StateDev, "1.4.0", agentdocs.SeverityWarn)
+		assertStatus(t, installed(installedBy(t, tool), dev), agentdocs.StateDev, "1.4.0", agentdocs.SeverityWarn)
 	})
 	t.Run("both", func(t *testing.T) {
 		t.Parallel()
-		assertStatus(t, agentdocs.Installed(installedBy(t, dev), dev), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+		assertStatus(t, installed(installedBy(t, dev), dev), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 	})
 }
 
@@ -120,8 +120,8 @@ func TestInstalledEmptyComparableOnEitherSideIsDev(t *testing.T) {
 func TestInstalledUncomparableIsDev(t *testing.T) {
 	t.Parallel()
 	odd := withTool(func(t *agentdocs.Tool) { t.Comparable = "nightly" })
-	assertStatus(t, agentdocs.Installed(installedBy(t, odd), tool), agentdocs.StateDev, "nightly", agentdocs.SeverityWarn)
-	assertStatus(t, agentdocs.Installed(installedBy(t, tool), odd), agentdocs.StateDev, "1.4.0", agentdocs.SeverityWarn)
+	assertStatus(t, installed(installedBy(t, odd), tool), agentdocs.StateDev, "nightly", agentdocs.SeverityWarn)
+	assertStatus(t, installed(installedBy(t, tool), odd), agentdocs.StateDev, "1.4.0", agentdocs.SeverityWarn)
 }
 
 // Ported: TestDoctorCheckSkillManualCurrent_UnparseableProvenance_VersionUnknown.
@@ -131,7 +131,7 @@ func TestInstalledOwnedWithoutComparableIsDev(t *testing.T) {
 	t.Parallel()
 	target := t.TempDir()
 	mustWrite(t, filepath.Join(target, agentdocs.ProvenanceFile), "<!-- mytool-skill-install -->\nnot a real provenance file\n")
-	assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+	assertStatus(t, installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 }
 
 // A legacy a2a stamp (every a2a install before its switch, written by a2a's
@@ -148,18 +148,18 @@ func TestInstalledLegacyA2aStampIsDev(t *testing.T) {
 	mustWrite(t, filepath.Join(target, agentdocs.ProvenanceFile), legacy)
 	mustWrite(t, filepath.Join(target, "SKILL.md"), "x\n")
 	a2a := withTool(func(t *agentdocs.Tool) { t.ID, t.Name, t.Comparable = "a2ahub", "a2a", "0.23.0" })
-	assertStatus(t, agentdocs.Installed(target, a2a), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+	assertStatus(t, installed(target, a2a), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 }
 
 // Installed with an empty ID owns nothing: Foreign, not judged.
 func TestInstalledEmptyIDOwnsNothing(t *testing.T) {
 	t.Parallel()
 	target := installedBy(t, tool)
-	assertStatus(t, agentdocs.Installed(target, withTool(func(t *agentdocs.Tool) { t.ID = "" })), agentdocs.StateForeign, "", agentdocs.SeverityOK)
+	assertStatus(t, installed(target, withTool(func(t *agentdocs.Tool) { t.ID = "" })), agentdocs.StateForeign, "", agentdocs.SeverityOK)
 	// Not even a stamp whose marker has an empty namespace.
 	blank := t.TempDir()
 	mustWrite(t, filepath.Join(blank, agentdocs.ProvenanceFile), "<!-- -skill-install -->\n<!-- comparable: 1.4.0 -->\n")
-	assertStatus(t, agentdocs.Installed(blank, withTool(func(t *agentdocs.Tool) { t.ID = "" })), agentdocs.StateForeign, "", agentdocs.SeverityOK)
+	assertStatus(t, installed(blank, withTool(func(t *agentdocs.Tool) { t.ID = "" })), agentdocs.StateForeign, "", agentdocs.SeverityOK)
 }
 
 // The comparable line is read only from the leading comment block: a
@@ -169,7 +169,7 @@ func TestInstalledReadsComparableOnlyFromTheHead(t *testing.T) {
 	target := t.TempDir()
 	mustWrite(t, filepath.Join(target, agentdocs.ProvenanceFile),
 		"<!-- mytool-skill-install -->\n# heading\n<!-- comparable: 1.4.0 -->\n")
-	assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
+	assertStatus(t, installed(target, tool), agentdocs.StateDev, "", agentdocs.SeverityWarn)
 }
 
 // Ported: TestDoctorCheckSkillManualCurrent_ForeignInstall_NotJudged. A
@@ -181,18 +181,18 @@ func TestInstalledForeignIsNotJudged(t *testing.T) {
 		t.Parallel()
 		target := t.TempDir()
 		mustWrite(t, filepath.Join(target, agentdocs.ProvenanceFile), "not a real provenance file\n<!-- comparable: 1.3.0 -->\n")
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
+		assertStatus(t, installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
 	})
 	t.Run("no provenance at all", func(t *testing.T) {
 		t.Parallel()
 		target := t.TempDir()
 		mustWrite(t, filepath.Join(target, "notes.md"), "mine\n")
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
+		assertStatus(t, installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
 	})
 	t.Run("another tool's install", func(t *testing.T) {
 		t.Parallel()
 		target := installedBy(t, withTool(func(t *agentdocs.Tool) { t.ID, t.Comparable = "othertool", "0.1.0" }))
-		assertStatus(t, agentdocs.Installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
+		assertStatus(t, installed(target, tool), agentdocs.StateForeign, "", agentdocs.SeverityOK)
 	})
 }
 
@@ -231,7 +231,7 @@ func TestInstalledIsReadOnly(t *testing.T) {
 	t.Parallel()
 	target := installedBy(t, tool)
 	before, _ := os.ReadFile(filepath.Join(target, agentdocs.ProvenanceFile))
-	_ = agentdocs.Installed(target, withTool(func(t *agentdocs.Tool) { t.Comparable = "9.9.9" }))
+	_ = installed(target, withTool(func(t *agentdocs.Tool) { t.Comparable = "9.9.9" }))
 	after, _ := os.ReadFile(filepath.Join(target, agentdocs.ProvenanceFile))
 	if string(before) != string(after) {
 		t.Fatal("Installed modified PROVENANCE.md")

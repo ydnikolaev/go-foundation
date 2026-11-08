@@ -1,0 +1,31 @@
+# Adoption notes for consumers of this unit, in the adoption unit's schema.
+schema: go-foundation/releasenotes/v1
+version: 0.2.0
+released: 2026-11-08
+headline: Nothing the unit touches leaves the root the caller names, symlinks included
+changes:
+  - id: AGENTDOCS-0200-1
+    kind: fix
+    impact: high
+    subject: Every disk-touching function takes a root and a path inside it, and stays there through os.Root
+    detail: >-
+      0.1.0 followed symlinks out of the repository: a CLAUDE.md linked to ~/.bashrc took the pointer
+      block, and a .claude/skills linked to the home directory took Link's wipe and writes. Now the
+      signatures are Install(tree, dir, root, target, tool, force), Installed(root, target, tool),
+      Drift(tree, dir, root, target) and UpsertPointer(root, path, name, body); Link and Detect keep
+      theirs. Each opens an os.Root on root: a symlink that stays inside still works (CLAUDE.md ->
+      AGENTS.md writes AGENTS.md and stays a link), one that leaves or is absolute is refused with an
+      *Error naming the path, and so is a path argument that climbs out with "..". A forced wipe removes
+      a link, never what it points at. Installed and Detect read only inside the root, and Drift reports
+      a file that links out as undecidable. UpsertPointer replaces the file through a temporary file and
+      a rename in its own directory, keeping its permission bits. Link now refuses a target outside the
+      root and treats an existing absolute-symlink entry as foreign. go.mod keeps go 1.25.0: every os.Root
+      method used exists there.
+    actor: agent
+    action:
+      scope: local
+      why: >-
+        A 0.1.0 call does not compile against 0.2.0, so the compiler names every call site; the work is to
+        pass the repository root and a path relative to it, never a root wider than the repository (a
+        user-level install names its own root). No detect: the compiler is the check, and a too-wide root
+        is a reviewer's call, not a pattern.

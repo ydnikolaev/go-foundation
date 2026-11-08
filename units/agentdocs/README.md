@@ -8,7 +8,7 @@ doctor row says when the installed copy drifted from the binary.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/agentdocs@v0.1.0
+go get github.com/ydnikolaev/go-foundation/units/agentdocs@v0.2.0
 ```
 
 go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.
@@ -41,8 +41,8 @@ docs := &cobra.Command{Use: "docs <topic>", Args: cobra.ExactArgs(1), RunE: func
 	return err
 }}
 install := &cobra.Command{Use: "install", RunE: func(c *cobra.Command, _ []string) error {
-	_, err := agentdocs.Install(Docs, "mytool", filepath.Join(root, ".mytool/skill"), tool, force)
-	if err == nil { _, err = agentdocs.UpsertPointer(filepath.Join(root, "AGENTS.md"), tool.ID, pointerBody) }
+	_, err := agentdocs.Install(Docs, "mytool", root, ".mytool/skill", tool, force)
+	if err == nil { _, err = agentdocs.UpsertPointer(root, "AGENTS.md", tool.ID, pointerBody) }
 	return err // errors.Is(err, agentdocs.ErrForeignTarget): say "pass --force"
 }}
 link := &cobra.Command{Use: "link", RunE: func(c *cobra.Command, _ []string) error {
@@ -55,9 +55,13 @@ link := &cobra.Command{Use: "link", RunE: func(c *cobra.Command, _ []string) err
 // m.TopicFor(strings.TrimPrefix(cmd.CommandPath(), "mytool ")).
 ```
 
-Doctor rows: `st := agentdocs.Installed(filepath.Join(root, ".mytool/skill"), tool)`, report `st.Severity()` and
+`root` is the repository root, and every path after it is relative to it. Nothing the unit touches leaves that
+root, symlinks included: a CLAUDE.md that links to AGENTS.md is followed, one that links to `~/.bashrc` is refused
+with an error naming it, and so is a path that climbs out with `..`.
+
+Doctor rows: `st := agentdocs.Installed(root, ".mytool/skill", tool)`, report `st.Severity()` and
 word it from `st.State` and `st.Version` (Behind and Ahead name both versions; Dev names the dev build). Then
-`d, err := agentdocs.Drift(Docs, "mytool", target)` for the tree itself. Its severity is yours; a2a's is:
+`d, err := agentdocs.Drift(Docs, "mytool", root, ".mytool/skill")` for the tree itself. Its severity is yours; a2a's is:
 
 - Current with `d.HasDiff()` is **Fail**: the stamp names this binary and the tree contradicts it (a hand edit,
   a partial copy). Name the counts and the first paths, and say the refresh overwrites local edits.
@@ -84,6 +88,9 @@ word it from `st.State` and `st.Version` (Behind and Ahead name both versions; D
 
 ## Do not
 
+- Never pass a root wider than the repository (`/`, the home directory): the root is the containment, and a wider
+  one lets a cloned repository's symlinks reach whatever it contains. A user-level install names its own root
+  (`~/.mytool/skill`, target `"."`).
 - Do not embed with `all:`: it ships whatever the build machine left untracked (a `.DS_Store`) to every repository.
 - Do not compare `Tool.Version`; compare through `Installed`.
 - Do not warn on `StateNone`: a repository that never ran your install verb owes nothing.

@@ -3,6 +3,7 @@ package agentdocs
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io/fs"
 	"os"
@@ -30,10 +31,16 @@ const (
 // "<!-- <id>-skill-install -->".
 func installMarker(id string) string { return "<!-- " + id + "-skill-install -->" }
 
-// Install mirrors tree's dir subtree into target and writes PROVENANCE.md
-// beside it, returning the number of tree files written (PROVENANCE.md is not
-// counted). dir is stripped, so tree's "<dir>/SKILL.md" lands at
-// "<target>/SKILL.md"; dir "." installs the whole tree.
+// Install mirrors tree's dir subtree into target, a path inside root, and
+// writes PROVENANCE.md beside it, returning the number of tree files written
+// (PROVENANCE.md is not counted). dir is stripped, so tree's "<dir>/SKILL.md"
+// lands at "<target>/SKILL.md"; dir "." installs the whole tree. root must
+// exist; target "." installs into root itself.
+//
+// Nothing Install touches leaves root, symlinks included: a target that
+// climbs out, or reaches out through a symlink, is refused with an *Error
+// naming it, and a symlink inside the target is removed as a link, never
+// followed.
 //
 // A target that is absent or empty is installed directly. A non-empty target
 // carrying this tool's marker is wiped first, so no stale file survives. A
@@ -41,14 +48,22 @@ func installMarker(id string) string { return "<!-- " + id + "-skill-install -->
 // ErrForeignTarget and writes nothing, unless force is set. A Tool with no ID
 // wraps ErrToolID, and a dir the tree does not hold wraps ErrTreeMissing, both
 // before anything is removed. Install writes only under target.
-func Install(tree fs.FS, dir, target string, t Tool, force bool) (written int, err error) {
+func Install(tree fs.FS, dir, root, target string, t Tool, force bool) (written int, err error) {
 	if t.ID == "" {
 		return 0, &Error{Op: "Install", Err: ErrToolID}
 	}
 	if info, statErr := fs.Stat(tree, dir); statErr != nil || !info.IsDir() {
 		return 0, &Error{Op: "Install", Input: dir, Err: ErrTreeMissing}
 	}
-	nonEmpty, owned, err := targetState(target, t.ID)
+	if err := local("Install", target); err != nil {
+		return 0, err
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return 0, &Error{Op: "Install", Input: root, Err: err}
+	}
+	defer func() { _ = r.Close() }()
+	nonEmpty, owned, err := targetState(r, target, t.ID)
 	if err != nil {
 		return 0, &Error{Op: "Install", Input: target, Err: err}
 	}
@@ -56,22 +71,50 @@ func Install(tree fs.FS, dir, target string, t Tool, force bool) (written int, e
 		return 0, &Error{Op: "Install", Input: target, Err: ErrForeignTarget}
 	}
 	if nonEmpty {
-		if err := os.RemoveAll(target); err != nil {
+		if err := wipe(r, target); err != nil {
 			return 0, &Error{Op: "Install", Input: target, Err: err}
 		}
 	}
-	written, err = writeTree(tree, dir, target)
+	written, err = writeTree(tree, dir, r, target)
 	if err != nil {
 		return written, &Error{Op: "Install", Input: target, Err: err}
 	}
-	if err := os.WriteFile(filepath.Join(target, ProvenanceFile), []byte(provenance(t)), 0o644); err != nil {
+	if err := r.WriteFile(filepath.Join(target, ProvenanceFile), []byte(provenance(t)), 0o644); err != nil {
 		return written, &Error{Op: "Install", Input: target, Err: err}
 	}
 	return written, nil
 }
 
+// wipe removes target for a refresh. A target that is a symlink is removed as
+// the link, so the directory it points at keeps its files. The root itself
+// cannot be removed, so target "." loses its entries instead.
+func wipe(r *os.Root, target string) error {
+	if filepath.Clean(target) != "." {
+		return r.RemoveAll(target)
+	}
+	entries, err := readDir(r, ".")
+	if err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if err := r.RemoveAll(e.Name()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readDir(r *os.Root, name string) ([]fs.DirEntry, error) {
+	f, err := r.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return f.ReadDir(-1)
+}
+
 // writeTree materializes tree's dir subtree under target, dir stripped.
-func writeTree(tree fs.FS, dir, target string) (int, error) {
+func writeTree(tree fs.FS, dir string, r *os.Root, target string) (int, error) {
 	var count int
 	err := fs.WalkDir(tree, dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -83,16 +126,16 @@ func writeTree(tree fs.FS, dir, target string) (int, error) {
 		}
 		dest := filepath.Join(target, filepath.FromSlash(rel)) // fs paths never hold ".."
 		if d.IsDir() {
-			return os.MkdirAll(dest, 0o755)
+			return r.MkdirAll(dest, 0o755)
 		}
 		data, err := fs.ReadFile(tree, p)
 		if err != nil {
 			return err
 		}
-		if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+		if err := r.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
 			return err
 		}
-		if err := os.WriteFile(dest, data, 0o644); err != nil {
+		if err := r.WriteFile(dest, data, 0o644); err != nil {
 			return err
 		}
 		count++
@@ -115,12 +158,13 @@ func provenance(t Tool) string {
 
 // targetState inspects target: nonEmpty when it exists and holds an entry,
 // owned when its PROVENANCE.md opens with id's marker. An absent or empty
-// target is (false, false); an absent or unreadable marker file, or an empty
-// id, is unowned, not an error.
-func targetState(target, id string) (nonEmpty, owned bool, err error) {
-	entries, err := os.ReadDir(target)
+// target is (false, false); an absent or unreadable marker file (one that
+// links out of the root is unreadable), or an empty id, is unowned, not an
+// error.
+func targetState(r *os.Root, target, id string) (nonEmpty, owned bool, err error) {
+	entries, err := readDir(r, target)
 	if err != nil {
-		if os.IsNotExist(err) {
+		if errors.Is(err, fs.ErrNotExist) {
 			return false, false, nil
 		}
 		return false, false, err
@@ -128,7 +172,7 @@ func targetState(target, id string) (nonEmpty, owned bool, err error) {
 	if len(entries) == 0 {
 		return false, false, nil
 	}
-	data, readErr := os.ReadFile(filepath.Join(target, ProvenanceFile))
+	data, readErr := r.ReadFile(filepath.Join(target, ProvenanceFile))
 	if readErr != nil || id == "" {
 		return true, false, nil
 	}
@@ -203,16 +247,25 @@ func (s InstallStatus) Severity() Severity {
 // t.Version is display only. An empty or non-version Comparable on either
 // side is Dev, and so is a stamp of this tool's that records no comparable
 // line at all (a legacy install): the next Install heals it. Ownership is
-// t.ID's marker; an empty ID owns nothing. Installed only reads.
-func Installed(target string, t Tool) InstallStatus {
-	nonEmpty, owned, err := targetState(target, t.ID)
+// t.ID's marker; an empty ID owns nothing. Installed only reads, and only
+// inside root: a target outside it, lexically or through a symlink, is None.
+func Installed(root, target string, t Tool) InstallStatus {
+	if local("Installed", target) != nil {
+		return InstallStatus{State: StateNone}
+	}
+	r, err := os.OpenRoot(root)
+	if err != nil {
+		return InstallStatus{State: StateNone}
+	}
+	defer func() { _ = r.Close() }()
+	nonEmpty, owned, err := targetState(r, target, t.ID)
 	if err != nil || !nonEmpty {
 		return InstallStatus{State: StateNone}
 	}
 	if !owned {
 		return InstallStatus{State: StateForeign}
 	}
-	data, err := os.ReadFile(filepath.Join(target, ProvenanceFile))
+	data, err := r.ReadFile(filepath.Join(target, ProvenanceFile))
 	if err != nil {
 		return InstallStatus{State: StateNone}
 	}

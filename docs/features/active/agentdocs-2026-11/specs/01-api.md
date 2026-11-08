@@ -24,11 +24,11 @@ func (m Manifest) Read(tree fs.FS, topic string) ([]byte, error) // an unknown t
 func WorkflowLine(t Tool, topic string) string                   // "workflow: run `acme docs <topic>` for the walkthrough"
 
 // Install, and the drift a doctor row reports
-func Install(tree fs.FS, dir, target string, t Tool, force bool) (written int, err error) // ErrForeignTarget
+func Install(tree fs.FS, dir, root, target string, t Tool, force bool) (written int, err error) // ErrForeignTarget
 type InstallStatus struct{ State State; Version string }        // None, Foreign, Dev, Behind, Current, Ahead
-func Installed(target string, t Tool) InstallStatus              // .Severity(): OK, Warn, Fail, as adoption.ClockFile
+func Installed(root, target string, t Tool) InstallStatus        // .Severity(): OK, Warn, Fail, as adoption.ClockFile
 type TreeDrift struct{ Total int; Missing, Modified, Unexpected []string; Undecidable string }
-func Drift(tree fs.FS, dir, target string) (TreeDrift, error)   // root PROVENANCE.md exempt; severity is the caller's
+func Drift(tree fs.FS, dir, root, target string) (TreeDrift, error) // root PROVENANCE.md exempt; severity is the caller's
 
 // Agent surfaces
 type Surface struct{ ID, SkillsHome, ContextFile string; ReadsAgentsMD bool; SourceURL, VerifiedOn string }
@@ -37,7 +37,7 @@ func Detect(root string) []Surface
 func Link(root string, s Surface, name, target string, force bool) (LinkResult, error) // symlink, else a stub
 
 // Context-file pointer
-func UpsertPointer(path, name, body string) (changed bool, err error) // replaces only its own delimited block
+func UpsertPointer(root, path, name, body string) (changed bool, err error) // replaces only its own delimited block
 
 // A generated file in the tree must match (for cobra/doc output and the like)
 func Stale(tree fs.FS, generated map[string][]byte) []string
@@ -45,6 +45,8 @@ func Stale(tree fs.FS, generated map[string][]byte) []string
 
 
 ## Rules carried from a2a
+
+- **Containment** (v0.2.0, beyond a2a): nothing the unit touches leaves the `root` the caller names, symlinks included. Every disk-touching function takes `root` plus paths relative to it and goes through `os.Root`: a symlink inside the root works (CLAUDE.md → AGENTS.md), one that escapes or is absolute is refused with an error naming the path, as is a path that climbs out with `..`; the pointer is written through a temporary file and a rename inside the root.
 
 - **Install** is a mirror. It refuses a non-empty target without the tool's marker unless forced, and wipes only a target that is its own. It writes only under the target. `PROVENANCE.md` opens with the marker `<!-- <Tool.ID>-skill-install -->` and names `Tool.Name Tool.Version`, `Tool.Source` and `Tool.Refresh`.
 - **Installed** compares `Tool.Comparable` with the comparable version the stamp records; `Tool.Version` is display only and goes into `PROVENANCE.md` beside it. An empty Comparable on either side is Dev. The states:

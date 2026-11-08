@@ -19,7 +19,7 @@ const (
 
 func upsert(t *testing.T, path, body string) bool {
 	t.Helper()
-	changed, err := agentdocs.UpsertPointer(path, "mytool", body)
+	changed, err := upsertAt(path, "mytool", body)
 	if err != nil {
 		t.Fatalf("UpsertPointer: %v", err)
 	}
@@ -144,7 +144,7 @@ func TestUpsertPointerRecognizesAnAnnotatedStartMarker(t *testing.T) {
 	legacy := "# Consumer\n\n<!-- a2ahub:pointer:start (managed by `a2a init --agents-pointer`) -->\n## a2ahub\nold\n<!-- a2ahub:pointer:end -->\n"
 	path := filepath.Join(t.TempDir(), "AGENTS.md")
 	mustWrite(t, path, legacy)
-	changed, err := agentdocs.UpsertPointer(path, "a2ahub", "## a2ahub\nnew\n")
+	changed, err := upsertAt(path, "a2ahub", "## a2ahub\nnew\n")
 	if err != nil || !changed {
 		t.Fatalf("UpsertPointer = %v, %v", changed, err)
 	}
@@ -182,7 +182,7 @@ func TestUpsertPointerRefusesMalformedMarkers(t *testing.T) {
 			t.Parallel()
 			path := filepath.Join(t.TempDir(), "AGENTS.md")
 			mustWrite(t, path, content)
-			changed, err := agentdocs.UpsertPointer(path, "mytool", pointerBody)
+			changed, err := upsertAt(path, "mytool", pointerBody)
 			if !errors.Is(err, agentdocs.ErrPointerMalformed) || changed {
 				t.Fatalf("UpsertPointer = %v, %v; want ErrPointerMalformed, unchanged", changed, err)
 			}
@@ -198,7 +198,7 @@ func TestUpsertPointerRefusesABodyCarryingTheMarkers(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "AGENTS.md")
 	for _, body := range []string{"x\n" + pointerEnd + "\n", pointerStart + "\n"} {
-		if _, err := agentdocs.UpsertPointer(path, "mytool", body); !errors.Is(err, agentdocs.ErrPointerMalformed) {
+		if _, err := upsertAt(path, "mytool", body); !errors.Is(err, agentdocs.ErrPointerMalformed) {
 			t.Errorf("UpsertPointer(body %q) = %v, want ErrPointerMalformed", body, err)
 		}
 	}
