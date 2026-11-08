@@ -3,7 +3,7 @@
 #   scripts/unit-release.sh <unit> <X.Y.Z>
 # The unit lives in units/<unit>/ and the tag is units/<unit>/vX.Y.Z (the Go rule: the tag prefix is the module dir).
 # Refuses: no such unit, a version that is not X.Y.Z, no units/<unit>/releasenotes/<X.Y.Z>.yaml, a dirty tree, an existing
-# tag, a red `make check-full`. It never pushes: push the tag yourself (owner-gated), then `make consumers`.
+# tag, a red `make check-full`. It never pushes: after `make public-scan` passes, the session pushes the tag (R-7), then `make consumers`.
 set -euo pipefail
 unit=${1:?usage: unit-release.sh <unit> <X.Y.Z>}
 ver=${2:?usage: unit-release.sh <unit> <X.Y.Z>}
@@ -22,4 +22,4 @@ tag="$dir/v$ver"
 if git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then die "tag $tag exists"; fi
 make check-full || die "make check-full is red; no tag"
 git tag -a "$tag" -m "$unit v$ver"
-echo "unit-release: tagged $tag at $(git rev-parse --short HEAD); next: git push origin $tag && make consumers"
+echo "unit-release: tagged $tag at $(git rev-parse --short HEAD); next: make public-scan && git push origin $tag && make consumers (R-7)"

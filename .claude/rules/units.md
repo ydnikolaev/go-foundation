@@ -19,7 +19,7 @@ Rulings in `docs/rulings/` decide all of this; this is the working checklist.
 
 ## Release a unit
 `scripts/unit-release.sh <id> <X.Y.Z>`: refuses without `releasenotes/<X.Y.Z>.yaml` or on a red `make check`,
-then tags `units/<id>/vX.Y.Z`. `make public-scan`, push the tag (owner-gated), then `make consumers`; the table lands in the host registry,
+then tags `units/<id>/vX.Y.Z`. `make public-scan`, then push that one tag yourself (R-7; main, force-push and tag deletion stay owner-gated), then `make consumers`; the table lands in the host registry,
 whose owner commits it, never here (R-5).
 Breaking after v1: the module path becomes `units/<id>/vN`.
 
