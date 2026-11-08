@@ -1,0 +1,17 @@
+# Adoption notes for consumers of this unit, in the unit's own schema (dogfood).
+schema: go-foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-08
+headline: First release, extracted from a2ahub internal/notes at b5f12155
+changes:
+  - id: ADOPTION-0100-1
+    kind: feat
+    impact: high
+    subject: The adoption engine as a shared unit
+    detail: >-
+      Load, Pending, CheckDetects, Notice and ClockFile, behaviour-identical to a2ahub's
+      internal/notes for the a2a policy (parity measured on a2ahub's real corpus: 20 releases,
+      39 obligations, same ids, order and groups).
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

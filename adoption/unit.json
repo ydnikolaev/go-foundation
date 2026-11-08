@@ -1,0 +1,9 @@
+{
+  "id": "adoption",
+  "kind": "module",
+  "stack": "go",
+  "summary": "What a tool's releases still ask of a consuming repository: release-note obligations, a committed per-repo clock, detects, the per-verb notice and the clock-file git probe.",
+  "stability": "experimental",
+  "pairs": [],
+  "provenance": {"repo": "ydnikolaev/a2ahub", "path": "internal/notes", "sha": "b5f12155"}
+}
