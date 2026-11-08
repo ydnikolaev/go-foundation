@@ -6,5 +6,5 @@ decisions:
 - {id: R-2, date: 2026-11-08, status: ruled, by: cto, summary: 'Versioning: per-unit tags <id>/vX.Y.Z, v0 while experimental, /vN after a v1 break', area: [adoption/releasenotes/*, scripts/unit-release.sh]}
 - {id: R-3, date: 2026-11-08, status: ruled, by: cto, summary: 'Cross-stack pairing: unit.json pairs + shared ids; the contract lives in the server unit', area: [adoption/unit.json, scripts/units.py]}
 - {id: R-4, date: 2026-11-08, status: ruled, by: cto, summary: 'Go floor: no unit go line above config/go-floor (1.25.0, the lowest active consumer)', area: [adoption/go.mod, config/go-floor]}
-- {id: R-5, date: 2026-11-08, status: ruled, by: owner, summary: 'Registry: who uses what at which version is derived (CONSUMERS.md); no forks, copies are stamped', area: [config/consumers.txt, CONSUMERS.md, UNITS.md, scripts/consumers.py]}
+- {id: R-5, date: 2026-11-08, status: ruled, by: owner, summary: 'Registry: derived from go.mod and copy stamps; the hand-kept list lives in the host registry', area: [scripts/consumers.py, UNITS.md]}
 - {id: R-6, date: 2026-11-08, status: ruled, by: owner, summary: 'Visibility: one public repo, Apache-2.0, no private sibling; make public-scan guards it', area: [LICENSE, config/public-allowlist.txt, scripts/public-scan.py, mk/public.mk]}
