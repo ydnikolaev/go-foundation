@@ -7,13 +7,10 @@ other repository on the machine unadopted. This unit lets every verb ask at use.
 ## Install
 
 ```sh
-export GOPRIVATE=github.com/ydnikolaev/*     # while go-foundation is private
 go get github.com/ydnikolaev/go-foundation/adoption@v0.1.0
 ```
 
-GOPRIVATE alone is not enough: go fetches over https, and a private repo then fails with
-`could not read Username for 'https://github.com'`. Give git credentials once per machine or CI
-(`gh auth setup-git`, or `git config --global url."git@github.com:".insteadOf https://github.com/`).
+go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.
 
 ## Wire
 

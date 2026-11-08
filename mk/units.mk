@@ -18,5 +18,5 @@ units-lint: ## gofmt, go vet and golangci-lint in every unit (each unit is its o
 	  bad=$$(cd $$d && gofmt -l .); [ -z "$$bad" ] || { echo "units-lint: $$d: gofmt: $$bad" >&2; exit 1; }; \
 	  (cd $$d && go vet ./... && golangci-lint run ./...); done; echo "units-lint: ok"
 
-consumers: ## Regenerate CONSUMERS.md from each consumer's go.mod via gh (network; never in make check)
+consumers: ## Regenerate the host registry's consumer table via gh (network; never in make check; R-5)
 	@python3 scripts/consumers.py generate

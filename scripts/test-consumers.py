@@ -39,7 +39,7 @@ def setup(t, files, search, rows):
     for u in ("adoption", "clock"):
         (root / u).mkdir()
         (root / u / "unit.json").write_text("{}")
-    (root / "config" / "consumers.txt").write_text(rows)
+    (Path(t) / "consumers.txt").write_text(rows)
     git(root, "init", "-q")
     git(root, "commit", "-q", "--allow-empty", "-m", "x")
     for tag in ("adoption/v0.1.0", "adoption/v0.2.0", "adoption/v0.10.0"):
@@ -53,7 +53,8 @@ def setup(t, files, search, rows):
 
 
 def run(root, fake):
-    return subprocess.run([sys.executable, str(TOOL), "show", "--root", str(root), "--gh", str(fake)],
+    return subprocess.run([sys.executable, str(TOOL), "show", "--root", str(root), "--gh", str(fake),
+                           "--list", str(root.parent / "consumers.txt")],
                           capture_output=True, text=True)
 
 
