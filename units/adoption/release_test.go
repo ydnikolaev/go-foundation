@@ -181,6 +181,11 @@ func TestOwnNotesParse(t *testing.T) {
 			if ch.Action.Scope == ScopeLocal && len(ch.Action.Detect) == 0 {
 				t.Errorf("%s %s: a local step without a detect cannot be proven done", r.Version, ch.ID)
 			}
+			for _, cmd := range ch.Action.Detect {
+				if IsTemplateDetect(cmd) {
+					t.Errorf("%s %s: detect %q is a template, not a probe", r.Version, ch.ID, cmd)
+				}
+			}
 		}
 	}
 }

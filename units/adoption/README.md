@@ -7,7 +7,7 @@ other repository on the machine unadopted. This unit lets every verb ask at use.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/adoption@v0.2.0
+go get github.com/ydnikolaev/go-foundation/units/adoption@v0.3.0
 ```
 
 go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.
@@ -21,6 +21,8 @@ go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.
    a hand-over to the owner, never as a step the session runs. An empty `Actor` is an agent step.
 4. Record verb: refuse while `adoption.CheckDetects(ctx, proj.Items, nil)` is non-nil; then set `Through` to the binary
    version and append `proj.AuthoredAhead` to `Ahead`.
+   A template detect (`tool submit <id>`) is never run; `adoption.TemplateOnly(proj.Items)` names the obligations that
+   carry only templates, so a "verified" count can leave them out.
 5. After every successful verb: print `adoption.Notice(...)` on stderr when it is not empty. Never stdout, never the exit code.
 6. Doctor: report `adoption.ClockFile(...).Severity()`. `SeverityWarn` is an untracked clock in a repository with no
    commit yet (owed at the first commit); `SeverityFail` is an ignored clock (quote `IgnoredBy`) or an untracked one

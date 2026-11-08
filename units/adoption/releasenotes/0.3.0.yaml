@@ -1,0 +1,35 @@
+# Adoption notes for consumers of this unit, in the unit's own schema (dogfood).
+schema: go-foundation/releasenotes/v1
+version: 0.3.0
+released: 2026-11-08
+headline: A template detect such as `tool submit <id>` is skipped instead of reading as "still fires"
+changes:
+  - id: ADOPTION-0300-1
+    kind: fix
+    impact: high
+    subject: CheckDetects no longer runs a template detect
+    detail: >-
+      A detect carrying a `<word>` placeholder (`tool submit <id>`, `<XC-id>`) is a value the reader was
+      meant to fill in. A shell reads `<id>` as a redirect from a file named "id" and fails, so CheckDetects
+      reported the obligation as still firing and a record verb refused forever. CheckDetects now skips such a
+      command (IsTemplateDetect), and the obligation is recorded on the agent's word, as one with no detect.
+      A heredoc (`cat <<EOF > out`) is not a template. Ported from a2ahub's RN-02702-14.
+    actor: agent
+    action:
+      scope: none
+      why: >-
+        Nothing to change: the skip is inside CheckDetects. A record verb that refused on a template detect
+        completes on the next run.
+  - id: ADOPTION-0300-2
+    kind: feat
+    impact: normal
+    subject: TemplateOnly names the obligations no command checked
+    detail: >-
+      TemplateOnly(items) returns the ids of items that carry detects, every one of them a template. A record
+      verb that reports "N verified" should subtract them and name them, so that "verified" never counts an
+      obligation no command ran.
+    actor: agent
+    action:
+      scope: none
+      why: >-
+        Optional. A record verb that prints no verified count has nothing to change.

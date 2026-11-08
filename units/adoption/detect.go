@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os/exec"
+	"regexp"
 )
 
 // DetectRunner runs one detect command and reports whether the obligation
@@ -27,6 +28,45 @@ func DefaultDetectRunner(ctx context.Context, command string) (bool, error) {
 	return false, err
 }
 
+// templatePlaceholder matches a `<word ...>` placeholder: a value the reader
+// was meant to fill in, as in `tool submit <id>` or `<XC-id>`. It ends on a
+// non-space before `>`, so `cat <<EOF > out` is not one. A shell reads `<id>`
+// as a redirect from a file named "id" and fails, and that failure would read
+// as "still fires" for an obligation nobody can ever discharge.
+var templatePlaceholder = regexp.MustCompile(`<[A-Za-z](?:[^<>]*[^<>\s])?>`)
+
+// IsTemplateDetect reports whether a detect is a template for the reader to
+// fill in rather than a probe a tool can run. It proves nothing either way, so
+// CheckDetects never runs it, and a record verb records its obligation on the
+// agent's word, as for an obligation with no detect at all.
+func IsTemplateDetect(command string) bool {
+	return templatePlaceholder.MatchString(command)
+}
+
+// TemplateOnly returns the ids of items that carry detects, none of them
+// runnable (every one IsTemplateDetect). A record verb names them, so that
+// "verified" never counts an obligation no command checked.
+func TemplateOnly(items []PendingItem) []string {
+	var ids []string
+	for _, item := range items {
+		detects := item.Change.Action.Detect
+		if len(detects) == 0 {
+			continue
+		}
+		runnable := false
+		for _, cmd := range detects {
+			if !IsTemplateDetect(cmd) {
+				runnable = true
+				break
+			}
+		}
+		if !runnable {
+			ids = append(ids, item.Change.ID)
+		}
+	}
+	return ids
+}
+
 // DetectResult names the first item whose detect still fires or could not run.
 type DetectResult struct {
 	Item    PendingItem
@@ -35,8 +75,8 @@ type DetectResult struct {
 	Err     error
 }
 
-// CheckDetects runs every detect across items in order and stops at the first
-// that fires or cannot run; nil means every detect ran and exited zero. A
+// CheckDetects runs every detect across items in order, skipping a template
+// (IsTemplateDetect), and stops at the first that fires or cannot run; nil means every detect ran and exited zero. A
 // record verb refuses to move the clock while it returns non-nil.
 func CheckDetects(ctx context.Context, items []PendingItem, run DetectRunner) *DetectResult {
 	if run == nil {
@@ -44,6 +84,9 @@ func CheckDetects(ctx context.Context, items []PendingItem, run DetectRunner) *D
 	}
 	for _, item := range items {
 		for _, cmd := range item.Change.Action.Detect {
+			if IsTemplateDetect(cmd) {
+				continue
+			}
 			fired, err := run(ctx, cmd)
 			if err != nil {
 				return &DetectResult{Item: item, Command: cmd, Err: err}

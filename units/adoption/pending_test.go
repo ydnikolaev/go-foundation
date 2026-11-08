@@ -355,6 +355,46 @@ func TestCheckDetects_CannotRunIsNotFired(t *testing.T) {
 	}
 }
 
+// TestCheckDetects_SkipsATemplate: a template is never run, so it can never
+// read as "still fires", and the runnable detect beside it still runs.
+func TestCheckDetects_SkipsATemplate(t *testing.T) {
+	t.Parallel()
+	items := []PendingItem{
+		{Change: Change{ID: "A", Action: Action{Detect: []string{"tool submit <id>"}}}},
+		{Change: Change{ID: "B", Action: Action{Detect: []string{"<XC-id> preflight", "probe"}}}},
+	}
+	var calls []string
+	run := func(_ context.Context, cmd string) (bool, error) {
+		calls = append(calls, cmd)
+		return false, nil
+	}
+	if result := CheckDetects(context.Background(), items, run); result != nil {
+		t.Fatalf("CheckDetects = %+v, want nil", result)
+	}
+	if !slices.Equal(calls, []string{"probe"}) {
+		t.Fatalf("calls = %v, want only [probe]", calls)
+	}
+	if got := TemplateOnly(items); !slices.Equal(got, []string{"A"}) {
+		t.Fatalf("TemplateOnly = %v, want [A] (B has a runnable detect)", got)
+	}
+}
+
+func TestIsTemplateDetect(t *testing.T) {
+	t.Parallel()
+	for cmd, want := range map[string]bool{
+		"tool submit <id>":         true,
+		"tool show <x>":            true,
+		"preflight <XC-id> --json": true,
+		"cat <<EOF > out":          false,
+		"[ 1 -lt 2 ]":              false,
+		"grep -q x f":              false,
+	} {
+		if got := IsTemplateDetect(cmd); got != want {
+			t.Errorf("IsTemplateDetect(%q) = %v, want %v", cmd, got, want)
+		}
+	}
+}
+
 // TestDefaultDetectRunner exercises the real shell-backed runner, not just
 // the fake seam every other test above uses.
 func TestDefaultDetectRunner(t *testing.T) {
