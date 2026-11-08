@@ -1,1 +1,1 @@
-1.25.0  # R-4: the lowest go line of an active consumer (1.25.5, measured 2026-11-08); a unit go.mod may not exceed it
+1.26.0  # R-9: the oldest supported Go release (go.dev/doc/devel/release), moved each August; a unit go.mod may not exceed it
