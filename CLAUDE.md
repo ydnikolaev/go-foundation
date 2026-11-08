@@ -5,7 +5,9 @@ index here every project rule, skill, agent and make target you add, one line ea
 
 ## What this repo is
 
-<!-- One paragraph: what it does, who runs it, the stack in one line. -->
+Shared Go code for every ydnikolaev project: primitives and whole modules, one Go module per root directory (a
+"unit"), each tagged `<unit>/vX.Y.Z`. Consumers import by tag; nobody copies. Go only; a unit can pair with a unit
+in another stack's foundation repo by id. Catalogue: `UNITS.md`. Who uses what: `CONSUMERS.md`.
 
 ## Where things are
 
@@ -18,6 +20,10 @@ index here every project rule, skill, agent and make target you add, one line ea
 | `.devkit/config.env` | devkit answers for this repo (managed) |
 | `.claude/settings.json` | this repo's allow rows and hooks |
 | `docs/devkit-feedback.md` | legacy seed; new defect reports go to `devkit feedback` |
+| `<unit>/` | one unit: `go.mod`, `unit.json`, `README.md`, `releasenotes/` |
+| `config/go-floor` | the highest `go` line a unit may declare |
+| `config/consumers.txt` | where `make consumers` looks; the registry itself is derived |
+| `docs/rulings/` | layout, versioning, pairing, floor, registry, visibility |
 
 ## Gates
 
@@ -31,4 +37,9 @@ Shared rules and agents come from devkit through `~/.claude`. This repo adds onl
 `.claude/rules/*.md`, a skill in `.claude/skills/<name>/SKILL.md`, an agent in `.claude/agents/<name>.md`. Never
 name one `kit-*` or after a devkit one; additive only. List each below.
 
-<!-- - `.claude/rules/<name>.md`: what it holds -->
+- `.claude/rules/units.md`: adding, releasing and consuming a unit
+- `make units-check` / `make units-test`: the unit gate and its teeth (in `make check`)
+- `make units-catalogue`: regenerate `UNITS.md`
+- `make consumers`: regenerate `CONSUMERS.md` through gh (network; at every unit release)
+- `make units-lint`: gofmt, vet, golangci-lint per unit (check-full)
+- `scripts/unit-release.sh <unit> <version>`: tag a unit after a green gate

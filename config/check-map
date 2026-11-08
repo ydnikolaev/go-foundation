@@ -18,5 +18,18 @@ docs/** -
 .gitignore -
 .sops.yaml -
 
+# go-foundation: units-check and units-test run in CHECK_EXTRA (mk/units.mk), so their inputs select nothing extra
+scripts/units.py -
+scripts/test-units.py -
+scripts/consumers.py -
+scripts/test-consumers.py -
+*/unit.json -
+*/releasenotes/** -
+go.work -
+UNITS.md -
+CONSUMERS.md -
+scripts/unit-release.sh -
+*/testdata/** kit-go-test
+
 # Everything else is yours to map. Uncomment the catch-all and replace `test` with your test target.
 # ** test
