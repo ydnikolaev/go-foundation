@@ -1,0 +1,9 @@
+# The one place an exception to `make public-scan` lives (R-6). Read by scripts/public-scan.py.
+#   name <word>                        never refused: public repos, the owner's handle, the tooling (foundation-kit D-6)
+#   exempt <path> <rule> <reason...>   one rule off for one tracked path; the reason is mandatory
+name ydnikolaev
+name a2ahub
+name sporo
+name devkit
+name go-foundation
+exempt .copier-answers.devkit.yml host-path devkit-workaround: FB-716, copier records the absolute source path; remove when fixed

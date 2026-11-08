@@ -7,7 +7,7 @@ index here every project rule, skill, agent and make target you add, one line ea
 
 Shared Go code for every ydnikolaev project: primitives and whole modules, one Go module per root directory (a
 "unit"), each tagged `<unit>/vX.Y.Z`. Consumers import by tag; nobody copies. Go only; a unit can pair with a unit
-in another stack's foundation repo by id. Catalogue: `UNITS.md`. Who uses what: `CONSUMERS.md`.
+in another stack's foundation repo by id. Catalogue: `UNITS.md`. Public (R-6): nothing here names a private repo.
 
 ## Where things are
 
@@ -22,7 +22,7 @@ in another stack's foundation repo by id. Catalogue: `UNITS.md`. Who uses what: 
 | `docs/devkit-feedback.md` | legacy seed; new defect reports go to `devkit feedback` |
 | `<unit>/` | one unit: `go.mod`, `unit.json`, `README.md`, `releasenotes/` |
 | `config/go-floor` | the highest `go` line a unit may declare |
-| `config/consumers.txt` | where `make consumers` looks; the registry itself is derived |
+| `config/public-allowlist.txt` | the one place an exception to `make public-scan` lives |
 | `docs/rulings/` | layout, versioning, pairing, floor, registry, visibility |
 
 ## Gates
@@ -40,6 +40,8 @@ name one `kit-*` or after a devkit one; additive only. List each below.
 - `.claude/rules/units.md`: adding, releasing and consuming a unit
 - `make units-check` / `make units-test`: the unit gate and its teeth (in `make check`)
 - `make units-catalogue`: regenerate `UNITS.md`
-- `make consumers`: regenerate `CONSUMERS.md` through gh (network; at every unit release)
+- `make consumers`: regenerate the host registry's consumer table through gh (network; at every unit release)
+- `make public-scan`: private names, host paths, emails, secrets over tree and history (gh; before every push)
+- `make public-scan-test`: its teeth, offline (in `make check`)
 - `make units-lint`: gofmt, vet, golangci-lint per unit (check-full)
 - `scripts/unit-release.sh <unit> <version>`: tag a unit after a green gate

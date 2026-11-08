@@ -27,9 +27,13 @@ scripts/test-consumers.py -
 */releasenotes/** -
 go.work -
 UNITS.md -
-CONSUMERS.md -
+LICENSE -
 scripts/unit-release.sh -
 */testdata/** kit-go-test
+
+# public-scan-test runs in CHECK_EXTRA (mk/public.mk); public-scan itself needs gh and runs before a push (R-6)
+scripts/public-scan.py -
+scripts/test-public-scan.py -
 
 # Everything else is yours to map. Uncomment the catch-all and replace `test` with your test target.
 # ** test
