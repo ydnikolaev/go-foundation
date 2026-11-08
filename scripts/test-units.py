@@ -15,15 +15,15 @@ README = "# x\n\n## Install\n\n## Wire\n\n## Configure\n\n## Extension points\n\
 def good(root):
     (root / "config").mkdir()
     (root / "config" / "go-floor").write_text("1.25.0  # floor\n")
-    u = root / "clock"
+    u = root / "units" / "clock"
     (u / "releasenotes").mkdir(parents=True)
-    (u / "go.mod").write_text("module github.com/ydnikolaev/go-foundation/clock\n\ngo 1.25.0\n")
+    (u / "go.mod").write_text("module github.com/ydnikolaev/go-foundation/units/clock\n\ngo 1.25.0\n")
     (u / "unit.json").write_text(json.dumps({
         "id": "clock", "kind": "primitive", "stack": "go", "summary": "A clock.", "stability": "experimental",
         "pairs": [{"stack": "nuxt", "repo": "ydnikolaev/nuxt-foundation", "unit": "clock"}], "provenance": {}}))
     (u / "README.md").write_text(README)
     (u / "releasenotes" / "0.1.0.yaml").write_text("schema: x\nversion: 0.1.0\n")
-    (root / "go.work").write_text("go 1.25.0\n\nuse ./clock\n")
+    (root / "go.work").write_text("go 1.25.0\n\nuse ./units/clock\n")
 
 
 def run(root, *verb):
@@ -32,30 +32,43 @@ def run(root, *verb):
 
 
 def edit_json(root, **kv):
-    p = root / "clock" / "unit.json"
+    p = root / "units" / "clock" / "unit.json"
     d = json.loads(p.read_text())
     d.update(kv)
     p.write_text(json.dumps(d))
 
 
+def U(r):
+    return r / "units" / "clock"
+
+
+def stray(r):
+    (r / "retry").mkdir()
+    (r / "retry" / "go.mod").write_text("module github.com/ydnikolaev/go-foundation/retry\n\ngo 1.25.0\n")
+
+
 CASES = [
-    ("no unit.json", lambda r: (r / "clock" / "unit.json").unlink(), "no unit.json"),
+    ("no unit.json", lambda r: (U(r) / "unit.json").unlink(), "no unit.json"),
     ("id is not the dir", lambda r: edit_json(r, id="time"), "is not the directory name"),
     ("kind outside enum", lambda r: edit_json(r, kind="component"), "kind 'component'"),
     ("stability outside enum", lambda r: edit_json(r, stability="beta"), "stability 'beta'"),
     ("empty summary", lambda r: edit_json(r, summary=" "), "summary is empty"),
     ("pair without unit", lambda r: edit_json(r, pairs=[{"stack": "nuxt", "repo": "x"}]), "pairs[0]"),
-    ("wrong module path", lambda r: (r / "clock" / "go.mod").write_text(
+    ("wrong module path", lambda r: (U(r) / "go.mod").write_text(
         "module github.com/ydnikolaev/kit/clock\n\ngo 1.25.0\n"), "module 'github.com/ydnikolaev/kit/clock'"),
-    ("go above floor", lambda r: (r / "clock" / "go.mod").write_text(
-        "module github.com/ydnikolaev/go-foundation/clock\n\ngo 1.27\n"), "above the floor"),
-    ("README heading missing", lambda r: (r / "clock" / "README.md").write_text(README.replace("## Wire\n", "")),
+    ("module path without units/", lambda r: (U(r) / "go.mod").write_text(
+        "module github.com/ydnikolaev/go-foundation/clock\n\ngo 1.25.0\n"), "is not github.com/ydnikolaev/go-foundation/units/clock"),
+    ("unit at the root", stray, "retry/go.mod: a unit lives in units/retry/"),
+    ("go.mod at the root", lambda r: (r / "go.mod").write_text("module x\n"), "the root is tooling only"),
+    ("go above floor", lambda r: (U(r) / "go.mod").write_text(
+        "module github.com/ydnikolaev/go-foundation/units/clock\n\ngo 1.27\n"), "above the floor"),
+    ("README heading missing", lambda r: (U(r) / "README.md").write_text(README.replace("## Wire\n", "")),
      "'## Wire' is missing"),
-    ("no release notes", lambda r: (r / "clock" / "releasenotes" / "0.1.0.yaml").unlink(), "no releasenotes"),
-    ("note version mismatch", lambda r: (r / "clock" / "releasenotes" / "0.1.0.yaml").write_text("version: 0.2.0\n"),
+    ("no release notes", lambda r: (U(r) / "releasenotes" / "0.1.0.yaml").unlink(), "no releasenotes"),
+    ("note version mismatch", lambda r: (U(r) / "releasenotes" / "0.1.0.yaml").write_text("version: 0.2.0\n"),
      "is not the file name"),
-    ("unit missing from go.work", lambda r: (r / "go.work").write_text("go 1.25.0\n"), "unit ./clock is not in `use`"),
-    ("go.work names a non-unit", lambda r: (r / "go.work").write_text("go 1.25.0\n\nuse (\n\t./clock\n\t./gone\n)\n"),
+    ("unit missing from go.work", lambda r: (r / "go.work").write_text("go 1.25.0\n"), "unit ./units/clock is not in `use`"),
+    ("go.work names a non-unit", lambda r: (r / "go.work").write_text("go 1.25.0\n\nuse (\n\t./units/clock\n\t./gone\n)\n"),
      "`use ./gone` is not a unit"),
     ("no floor", lambda r: (r / "config" / "go-floor").unlink(), "config/go-floor: missing"),
 ]
@@ -74,7 +87,7 @@ def main():
         out = Path(t) / "cat.md"
         r = subprocess.run([sys.executable, str(UNITS), "catalogue", "--root", str(root)],
                            env={**os.environ, "KIT_COMPOSE_OUT": str(out)}, capture_output=True, text=True)
-        if r.returncode != 0 or "| [`clock`](clock/README.md) | primitive |" not in out.read_text() \
+        if r.returncode != 0 or "| [`clock`](units/clock/README.md) | primitive |" not in out.read_text() \
                 or (root / "UNITS.md").exists():
             print("FAIL catalogue did not honour KIT_COMPOSE_OUT or lacks the clock row")
             failed += 1

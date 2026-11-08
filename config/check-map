@@ -23,13 +23,13 @@ scripts/units.py -
 scripts/test-units.py -
 scripts/consumers.py -
 scripts/test-consumers.py -
-*/unit.json -
-*/releasenotes/** -
+units/*/unit.json -
+units/*/releasenotes/** -
 go.work -
 UNITS.md -
 LICENSE -
 scripts/unit-release.sh -
-*/testdata/** kit-go-test
+units/*/testdata/** kit-go-test
 
 # public-scan-test runs in CHECK_EXTRA (mk/public.mk); public-scan itself needs gh and runs before a push (R-6)
 scripts/public-scan.py -

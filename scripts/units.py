@@ -5,14 +5,15 @@
     python3 scripts/units.py catalogue [--root DIR]   write UNITS.md (to $KIT_COMPOSE_OUT when set)
     python3 scripts/units.py list      [--root DIR]   one line per unit: id kind stability module
 
-A unit is a root directory that holds a go.mod. Rules, each refused by name:
+A unit is a directory under units/ that holds a go.mod (LR: the root keeps only tooling). Rules, each refused by name:
+    layout       no go.mod outside units/<id>/ except inside a unit (a stray module at the root is refused)
     unit.json    present, valid JSON; id equals the directory; kind in KINDS; stability in STABILITIES; stack "go";
                  summary non-empty; pairs a list of {stack, repo, unit} objects (contract optional)
-    module path  go.mod's `module` line is MODULE_ROOT/<id>, or MODULE_ROOT/<id>/vN for N >= 2
+    module path  go.mod's `module` line is MODULE_ROOT/units/<id>, or MODULE_ROOT/units/<id>/vN for N >= 2
     go floor     go.mod's `go` line is at most the floor in config/go-floor (R-4)
-    go.work      lists every unit with `use ./<id>`, and nothing that is not a unit
+    go.work      lists every unit with `use ./units/<id>`, and nothing that is not a unit
     README.md    has the headings in README_HEADINGS, in that order
-    releasenotes <id>/releasenotes/*.yaml exists; each file's `version:` line equals its file name
+    releasenotes units/<id>/releasenotes/*.yaml exists; each file's `version:` line equals its file name
 UNITS.md freshness is not judged here: config/modules.ini declares it `[compose] generated`, and kit-modules runs
 `make units-catalogue` twice and compares, the one freshness mechanism devkit owns.
 
@@ -26,6 +27,7 @@ import sys
 from pathlib import Path
 
 MODULE_ROOT = "github.com/ydnikolaev/go-foundation"
+UNITS_DIR = "units"  # the one fixed prefix (LR); never a category such as prim/ or mod/
 KINDS = ("primitive", "module")
 STABILITIES = ("experimental", "stable", "deprecated")
 README_HEADINGS = ("## Install", "## Wire", "## Configure", "## Extension points", "## Do not")
@@ -33,11 +35,33 @@ SKIP = {".git", ".cache", ".artifacts", ".devkit", ".claude", "docs", "config", 
 
 
 def units(root):
-    out = []
+    base = root / UNITS_DIR
+    if not base.is_dir():
+        return []
+    return [d for d in sorted(base.iterdir()) if d.is_dir() and not d.name.startswith(".") and (d / "go.mod").is_file()]
+
+
+def rel(d):
+    return "%s/%s" % (UNITS_DIR, d.name)
+
+
+def module_path(d):
+    return "%s/%s" % (MODULE_ROOT, rel(d))
+
+
+def check_layout(root):
+    """A go.mod at the root, in a root directory or directly in units/ is a unit in the wrong place."""
+    probs = []
+    if (root / "go.mod").is_file():
+        probs.append("go.mod: the root is tooling only; a unit lives in %s/<id>/ (LR)" % UNITS_DIR)
+    if (root / UNITS_DIR / "go.mod").is_file():
+        probs.append("%s/go.mod: a unit lives in %s/<id>/, not in %s/ itself" % (UNITS_DIR, UNITS_DIR, UNITS_DIR))
     for d in sorted(root.iterdir()):
-        if d.is_dir() and d.name not in SKIP and not d.name.startswith(".") and (d / "go.mod").is_file():
-            out.append(d)
-    return out
+        if d.is_dir() and d.name not in SKIP and d.name != UNITS_DIR and not d.name.startswith(".") \
+                and (d / "go.mod").is_file():
+            probs.append("%s/go.mod: a unit lives in %s/%s/, not at the root (LR); next: git mv %s %s/%s"
+                         % (d.name, UNITS_DIR, d.name, d.name, UNITS_DIR, d.name))
+    return probs
 
 
 def version_tuple(v):
@@ -55,17 +79,17 @@ def gomod_line(text, key):
 def load_unit(d):
     """Return (meta, problems) for one unit directory."""
     probs = []
-    name = d.name
+    name = rel(d)
     try:
         meta = json.loads((d / "unit.json").read_text())
     except FileNotFoundError:
-        return None, ["%s: no unit.json; next: add one (see adoption/unit.json)" % name]
+        return None, ["%s: no unit.json; next: add one (see units/adoption/unit.json)" % name]
     except ValueError as e:
         return None, ["%s/unit.json: not valid JSON: %s" % (name, e)]
     if not isinstance(meta, dict):
         return None, ["%s/unit.json: not a JSON object" % name]
-    if meta.get("id") != name:
-        probs.append("%s/unit.json: id %r is not the directory name %r" % (name, meta.get("id"), name))
+    if meta.get("id") != d.name:
+        probs.append("%s/unit.json: id %r is not the directory name %r" % (name, meta.get("id"), d.name))
     if meta.get("kind") not in KINDS:
         probs.append("%s/unit.json: kind %r is not one of %s" % (name, meta.get("kind"), "|".join(KINDS)))
     if meta.get("stability") not in STABILITIES:
@@ -88,16 +112,16 @@ def check_gomod(d, floor):
     probs = []
     text = (d / "go.mod").read_text()
     mod = gomod_line(text, "module")
-    allowed = re.compile(r"%s/%s(/v([2-9]|[1-9]\d+))?" % (re.escape(MODULE_ROOT), re.escape(d.name)))
+    allowed = re.compile(r"%s(/v([2-9]|[1-9]\d+))?" % re.escape(module_path(d)))
     if not mod or not allowed.fullmatch(mod):
-        probs.append("%s/go.mod: module %r is not %s/%s" % (d.name, mod, MODULE_ROOT, d.name))
+        probs.append("%s/go.mod: module %r is not %s" % (rel(d), mod, module_path(d)))
     gov = gomod_line(text, "go")
     gt = version_tuple(gov or "")
     if gt is None:
-        probs.append("%s/go.mod: no comparable `go` line" % d.name)
+        probs.append("%s/go.mod: no comparable `go` line" % rel(d))
     elif floor is not None and gt > floor:
         probs.append("%s/go.mod: go %s is above the floor %s in config/go-floor (R-4); a consumer on the floor could not build it"
-                     % (d.name, gov, ".".join(map(str, floor))))
+                     % (rel(d), gov, ".".join(map(str, floor))))
     return probs
 
 
@@ -105,13 +129,13 @@ def check_readme(d):
     try:
         text = (d / "README.md").read_text()
     except FileNotFoundError:
-        return ["%s: no README.md" % d.name]
+        return ["%s: no README.md" % rel(d)]
     pos = -1
     for h in README_HEADINGS:
         m = re.search(r"^%s\s*$" % re.escape(h), text, re.M)
         if not m or m.start() < pos:
             return ["%s/README.md: needs the headings %s in that order; %r is missing or out of order"
-                    % (d.name, ", ".join(README_HEADINGS), h)]
+                    % (rel(d), ", ".join(README_HEADINGS), h)]
         pos = m.start()
     return []
 
@@ -119,13 +143,13 @@ def check_readme(d):
 def check_notes(d):
     notes = sorted((d / "releasenotes").glob("*.yaml")) if (d / "releasenotes").is_dir() else []
     if not notes:
-        return ["%s: no releasenotes/*.yaml; every release ships its adoption notes (R-5)" % d.name]
+        return ["%s: no releasenotes/*.yaml; every release ships its adoption notes (R-5)" % rel(d)]
     probs = []
     for f in notes:
         v = re.search(r"^version:\s*['\"]?([^'\"\s]+)", f.read_text(), re.M)
         if not v or v.group(1) != f.stem:
             probs.append("%s/releasenotes/%s: version %r is not the file name %r"
-                         % (d.name, f.name, v.group(1) if v else None, f.stem))
+                         % (rel(d), f.name, v.group(1) if v else None, f.stem))
     return probs
 
 
@@ -133,13 +157,13 @@ def check_gowork(root, unit_dirs):
     try:
         text = (root / "go.work").read_text()
     except FileNotFoundError:
-        return ["go.work: missing; next: go work init %s" % " ".join("./" + u.name for u in unit_dirs)]
+        return ["go.work: missing; next: go work init %s" % " ".join("./" + rel(u) for u in unit_dirs)]
     used = set()
     for block in re.findall(r"^use\s*\(([^)]*)\)", text, re.M):
         used.update(x.strip() for x in block.split() if x.strip())
     used.update(re.findall(r"^use\s+(\S+)\s*$", text, re.M))
     used.discard("(")
-    want = {"./" + u.name for u in unit_dirs}
+    want = {"./" + rel(u) for u in unit_dirs}
     probs = ["go.work: unit %s is not in `use`" % u for u in sorted(want - used)]
     probs += ["go.work: `use %s` is not a unit" % u for u in sorted(used - want)]
     return probs
@@ -151,10 +175,10 @@ def catalogue(root):
         meta, _ = load_unit(d)
         meta = meta or {}
         pairs = ", ".join("%s:%s/%s" % (p.get("stack"), p.get("repo"), p.get("unit")) for p in meta.get("pairs", []) if isinstance(p, dict)) or "-"
-        rows.append("| [`%s`](%s/README.md) | %s | %s | `%s/%s` | %s | %s |" % (
-            d.name, d.name, meta.get("kind", "?"), meta.get("stability", "?"), MODULE_ROOT, d.name, pairs,
+        rows.append("| [`%s`](%s/README.md) | %s | %s | `%s` | %s | %s |" % (
+            d.name, rel(d), meta.get("kind", "?"), meta.get("stability", "?"), module_path(d), pairs,
             str(meta.get("summary", "")).replace("|", "\\|")))
-    head = ("# Units\n\nGENERATED by `make units-catalogue` from each `<unit>/unit.json`; never edit by hand.\n"
+    head = ("# Units\n\nGENERATED by `make units-catalogue` from each `units/<id>/unit.json`; never edit by hand.\n"
             "Who uses which unit at which version: the host registry's foundation-consumers.md, derived by `make consumers` (R-5).\n\n"
             "| unit | kind | stability | import path | pairs | summary |\n|---|---|---|---|---|---|\n")
     return head + "\n".join(rows) + ("\n" if rows else "")
@@ -173,9 +197,10 @@ def read_floor(root):
 
 def check(root):
     floor, probs = read_floor(root)
+    probs += check_layout(root)
     unit_dirs = units(root)
     if not unit_dirs:
-        probs.append("no unit: a root directory with a go.mod")
+        probs.append("no unit: a directory under %s/ with a go.mod" % UNITS_DIR)
     for d in unit_dirs:
         _, p = load_unit(d)
         probs += p
@@ -200,7 +225,7 @@ def main(argv=None):
         for d in units(root):
             meta, _ = load_unit(d)
             meta = meta or {}
-            print(d.name, meta.get("kind", "?"), meta.get("stability", "?"), "%s/%s" % (MODULE_ROOT, d.name))
+            print(d.name, meta.get("kind", "?"), meta.get("stability", "?"), module_path(d))
         return 0
     probs, n = check(root)
     if probs:

@@ -6,7 +6,7 @@ index here every project rule, skill, agent and make target you add, one line ea
 ## What this repo is
 
 Shared Go code for every ydnikolaev project: primitives and whole modules, one Go module per root directory (a
-"unit"), each tagged `<unit>/vX.Y.Z`. Consumers import by tag; nobody copies. Go only; a unit can pair with a unit
+"unit"), each under `units/<unit>/` and tagged `units/<unit>/vX.Y.Z`. Consumers import by tag; nobody copies. Go only; a unit can pair with a unit
 in another stack's foundation repo by id. Catalogue: `UNITS.md`. Public (R-6): nothing here names a private repo.
 
 ## Where things are
@@ -20,7 +20,7 @@ in another stack's foundation repo by id. Catalogue: `UNITS.md`. Public (R-6): n
 | `.devkit/config.env` | devkit answers for this repo (managed) |
 | `.claude/settings.json` | this repo's allow rows and hooks |
 | `docs/devkit-feedback.md` | legacy seed; new defect reports go to `devkit feedback` |
-| `<unit>/` | one unit: `go.mod`, `unit.json`, `README.md`, `releasenotes/` |
+| `units/<unit>/` | one unit: `go.mod`, `unit.json`, `README.md`, `releasenotes/`; the root holds tooling only |
 | `config/go-floor` | the highest `go` line a unit may declare |
 | `config/public-allowlist.txt` | the one place an exception to `make public-scan` lives |
 | `docs/rulings/` | layout, versioning, pairing, floor, registry, visibility |

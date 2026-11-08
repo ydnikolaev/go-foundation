@@ -10,10 +10,10 @@ it lives in the host registry, never in this public repository (R-5, R-6): --lis
 foundation-consumers.md, and is committed there by the host registry's owner, never here. Each row is
 `<owner/repo> [<go.mod path> ...]` (default: go.mod at the repo root). For each row it reads:
     imports  every go.mod named, through `gh api repos/<repo>/contents/<path>`, for
-             `github.com/ydnikolaev/go-foundation/<unit>[/vN] <version>` requires
+             `github.com/ydnikolaev/go-foundation/units/<unit>[/vN] <version>` requires
     copies   a code search for the stamp `go-foundation-copy: <unit>@<sha>` in that repo: code that copies a unit
              instead of importing it. A copy is entropy: it is listed until it is gone (R-5).
-The latest version of each unit is the highest local tag `<unit>/vX.Y.Z` (fetch tags first). Status per cell:
+The latest version of each unit is the highest local tag `units/<unit>/vX.Y.Z` (fetch tags first). Status per cell:
 current, behind (names latest), ahead (a tag this checkout lacks: fetch), copy. A unit no row uses is `unused`.
 
 Network and gh auth are required, so `make consumers` is never in `make check`; run it at a unit release.
@@ -29,7 +29,7 @@ import sys
 from pathlib import Path
 
 MODULE_ROOT = "github.com/ydnikolaev/go-foundation"
-REQ = re.compile(r"^\s*(?:require\s+)?%s/([a-z0-9][a-z0-9-]*)(?:/v\d+)?\s+(v\S+)" % re.escape(MODULE_ROOT), re.M)
+REQ = re.compile(r"^\s*(?:require\s+)?%s/units/([a-z0-9][a-z0-9-]*)(?:/v\d+)?\s+(v\S+)" % re.escape(MODULE_ROOT), re.M)
 STAMP = re.compile(r"go-foundation-copy:\s*([a-z0-9][a-z0-9-]*)@([0-9a-f]{7,40})")
 
 
@@ -76,10 +76,10 @@ def read_rows(path):
 
 
 def latest_tags(root):
-    r = subprocess.run(["git", "-C", str(root), "tag", "-l", "*/v*"], capture_output=True, text=True, check=True)
+    r = subprocess.run(["git", "-C", str(root), "tag", "-l", "units/*/v*"], capture_output=True, text=True, check=True)
     best = {}
     for t in r.stdout.split():
-        unit, _, v = t.partition("/")
+        unit, _, v = t[len("units/"):].partition("/")
         k = semver_key(v)
         if k and (unit not in best or k > semver_key(best[unit])):
             best[unit] = v
@@ -87,7 +87,8 @@ def latest_tags(root):
 
 
 def units(root):
-    return sorted(d.name for d in root.iterdir() if d.is_dir() and (d / "unit.json").is_file())
+    base = root / "units"
+    return sorted(d.name for d in base.iterdir() if d.is_dir() and (d / "unit.json").is_file()) if base.is_dir() else []
 
 
 def scan(exe, repo, paths):

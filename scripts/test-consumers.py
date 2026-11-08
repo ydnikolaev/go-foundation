@@ -37,12 +37,12 @@ def setup(t, files, search, rows):
     root = Path(t) / "repo"
     (root / "config").mkdir(parents=True)
     for u in ("adoption", "clock"):
-        (root / u).mkdir()
-        (root / u / "unit.json").write_text("{}")
+        (root / "units" / u).mkdir(parents=True)
+        (root / "units" / u / "unit.json").write_text("{}")
     (Path(t) / "consumers.txt").write_text(rows)
     git(root, "init", "-q")
     git(root, "commit", "-q", "--allow-empty", "-m", "x")
-    for tag in ("adoption/v0.1.0", "adoption/v0.2.0", "adoption/v0.10.0"):
+    for tag in ("units/adoption/v0.1.0", "units/adoption/v0.2.0", "units/adoption/v0.10.0", "adoption/v9.0.0"):
         git(root, "tag", tag)
     data = Path(t) / "data.json"
     data.write_text(json.dumps({"files": files, "search": search}))
@@ -62,8 +62,8 @@ def main():
     failed = []
     with tempfile.TemporaryDirectory() as t:
         files = {
-            "repos/o/alpha/contents/go.mod": "module x\n\nrequire (\n\tgithub.com/ydnikolaev/go-foundation/adoption v0.2.0\n)\n",
-            "repos/o/beta/contents/go.mod": "module y\n\nrequire github.com/ydnikolaev/go-foundation/adoption v0.10.0\n",
+            "repos/o/alpha/contents/go.mod": "module x\n\nrequire (\n\tgithub.com/ydnikolaev/go-foundation/units/adoption v0.2.0\n)\n",
+            "repos/o/beta/contents/go.mod": "module y\n\nrequire github.com/ydnikolaev/go-foundation/units/adoption v0.10.0\n",
             "repos/o/a2a/contents/go.mod": "module z\n",
         }
         search = {"o/a2a": [{"path": "internal/notes/doc.go", "text_matches": [

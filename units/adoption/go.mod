@@ -1,4 +1,4 @@
-module github.com/ydnikolaev/go-foundation/adoption
+module github.com/ydnikolaev/go-foundation/units/adoption
 
 go 1.25.0
 
