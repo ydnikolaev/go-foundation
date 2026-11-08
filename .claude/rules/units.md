@@ -21,7 +21,7 @@ then tags `<id>/vX.Y.Z`. Push the tag (owner-gated), then `make consumers` and c
 Breaking after v1: the module path becomes `<id>/vN`.
 
 ## Consume a unit
-`GOPRIVATE=github.com/ydnikolaev/*` (while private), `go get github.com/ydnikolaev/go-foundation/<id>@v<X.Y.Z>`.
+`GOPRIVATE=github.com/ydnikolaev/*` plus git credentials for https (`gh auth setup-git`; while private), `go get github.com/ydnikolaev/go-foundation/<id>@v<X.Y.Z>`.
 Add the repo to `config/consumers.txt`. A copy instead of an import carries
 `// go-foundation-copy: <id>@<sha>` and a backlog row to replace it; `CONSUMERS.md` lists it until it is gone.
 A change one consumer needs is made here, upstream, and released.
