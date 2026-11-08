@@ -2,7 +2,9 @@ package adoption
 
 import (
 	"errors"
+	"os"
 	"slices"
+	"strings"
 	"testing"
 	"testing/fstest"
 )
@@ -138,5 +140,47 @@ func TestOlderThanAndImpact(t *testing.T) {
 	}
 	if ImpactOrder("high") >= ImpactOrder("normal") || ImpactOrder("low") >= ImpactOrder("weird") {
 		t.Error("ImpactOrder is not high < normal < low < unknown")
+	}
+}
+
+// TestParseActor accepts the two actors and an absent one, and refuses any
+// other value by the change's id: a misspelt "owner" would otherwise reach a
+// session as an agent step.
+func TestParseActor(t *testing.T) {
+	t.Parallel()
+	doc := func(actor string) []byte {
+		return []byte("version: 0.2.0\nreleased: 2026-11-08\nchanges:\n  - id: A-1\n    kind: feat\n" + actor + "    action: {scope: local, why: w}\n")
+	}
+	for _, tc := range []struct{ line, want string }{
+		{"", ""},
+		{"    actor: agent\n", ActorAgent},
+		{"    actor: owner\n", ActorOwner},
+	} {
+		r, err := Parse(doc(tc.line))
+		if err != nil || r.Changes[0].Actor != tc.want {
+			t.Errorf("actor line %q: %+v, %v; want %q", tc.line, r.Changes, err, tc.want)
+		}
+	}
+	_, err := Parse(doc("    actor: human\n"))
+	var e *Error
+	if !errors.Is(err, ErrReleaseInvalid) || !errors.As(err, &e) || !strings.Contains(e.Error(), `A-1: actor: "human"`) {
+		t.Fatalf("actor human: %v; want ErrReleaseInvalid naming A-1", err)
+	}
+}
+
+// TestOwnNotesParse loads this unit's own adoption notes with its own Load:
+// a note a consumer's tool cannot parse would block every consumer's walk.
+func TestOwnNotesParse(t *testing.T) {
+	t.Parallel()
+	rs, err := Load(os.DirFS("releasenotes"), "*.yaml")
+	if err != nil || len(rs) == 0 {
+		t.Fatalf("own notes: %d, %v", len(rs), err)
+	}
+	for _, r := range rs {
+		for _, ch := range r.Changes {
+			if ch.Action.Scope == ScopeLocal && len(ch.Action.Detect) == 0 {
+				t.Errorf("%s %s: a local step without a detect cannot be proven done", r.Version, ch.ID)
+			}
+		}
 	}
 }

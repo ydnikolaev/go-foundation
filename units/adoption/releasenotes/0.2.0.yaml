@@ -1,0 +1,40 @@
+# Adoption notes for consumers of this unit, in the unit's own schema (dogfood).
+schema: go-foundation/releasenotes/v1
+version: 0.2.0
+released: 2026-11-08
+headline: Who acts on a change (Change.Actor), and an unborn repository's clock is a warning, not a failure
+changes:
+  - id: ADOPTION-0200-1
+    kind: feat
+    impact: normal
+    subject: Change.Actor says whether an agent or the owner satisfies a change
+    detail: >-
+      A release note may set `actor: agent` or `actor: owner` on a change; Parse refuses any other value,
+      naming the change id. An owner step needs a person (a credential, a setting, a decision), so a tool
+      that lists obligations must hand it over instead of presenting it as a step the session runs.
+      Absent means agent, so every 0.1.0 note reads exactly as before.
+    actor: agent
+    action:
+      scope: local
+      why: >-
+        A tool that renders PendingItem without looking at Change.Actor shows an owner step as work the
+        session can do; the session then tries it, fails on the missing credential, and reports a red it cannot fix.
+      detect:
+        - git grep -q 'adoption\.ActorOwner' -- '*.go'
+  - id: ADOPTION-0200-2
+    kind: feat
+    impact: normal
+    subject: ClockFile reports an unborn repository separately; doctors judge by Severity()
+    detail: >-
+      ClockFileStatus gains Unborn (the repository has no commit yet) and a Severity() method:
+      SeverityOK for a tracked clock, SeverityWarn for an untracked, unignored clock before the first commit,
+      SeverityFail for an ignored clock at any time and for an untracked one once a commit exists.
+      Tracked and IgnoredBy are unchanged.
+    actor: agent
+    action:
+      scope: local
+      why: >-
+        A doctor that fails on `!Tracked` alone turns a freshly initialised repository red before it can
+        commit anything; judging by Severity() keeps that a warning and keeps every other case a failure.
+      detect:
+        - git grep -q '\.Severity()' -- '*.go'

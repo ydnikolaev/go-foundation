@@ -28,6 +28,16 @@ const KindKnownIssue = "known-issue"
 // dated release, so the code they describe is in the binary.
 const Unreleased = "unreleased"
 
+// ActorAgent and ActorOwner say who can satisfy a change's action. An agent
+// step is one a session in the consuming repository completes alone; an
+// owner step needs a person (a credential, a setting, a decision), so a tool
+// must hand it over rather than attempt it. Empty means the note does not
+// say, and a tool should treat it as an agent step.
+const (
+	ActorAgent = "agent"
+	ActorOwner = "owner"
+)
+
 // Action is what one change asks of the consuming repository.
 type Action struct {
 	Scope string `yaml:"scope" json:"scope"`
@@ -47,7 +57,9 @@ type Change struct {
 	Subject string   `yaml:"subject" json:"subject"`
 	Detail  string   `yaml:"detail" json:"detail"`
 	Affects []string `yaml:"affects,omitempty" json:"affects,omitempty"`
-	Action  Action   `yaml:"action" json:"action"`
+	// Actor is ActorAgent, ActorOwner or empty; Parse refuses anything else.
+	Actor  string `yaml:"actor,omitempty" json:"actor,omitempty"`
+	Action Action `yaml:"action" json:"action"`
 }
 
 // Release is one version's release-notes document. Parsing is structural
@@ -75,6 +87,11 @@ func Parse(raw []byte) (Release, error) {
 	}
 	if r.Released != "" && r.Released != Unreleased && !isoDate.MatchString(r.Released) {
 		return Release{}, &Error{Op: op, Input: r.Version, Err: fmt.Errorf("%w: released: %q must be an ISO date (YYYY-MM-DD) or %q", ErrReleaseInvalid, r.Released, Unreleased)}
+	}
+	for _, ch := range r.Changes {
+		if ch.Actor != "" && ch.Actor != ActorAgent && ch.Actor != ActorOwner {
+			return Release{}, &Error{Op: op, Input: r.Version, Err: fmt.Errorf("%w: %s: actor: %q must be %q or %q", ErrReleaseInvalid, ch.ID, ch.Actor, ActorAgent, ActorOwner)}
+		}
 	}
 	r.Raw = raw
 	return r, nil

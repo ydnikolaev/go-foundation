@@ -45,18 +45,33 @@ func TestClockFileAgainstRealGit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if got, err := ClockFile(ctx, root, clock); err != nil || got.Tracked || got.IgnoredBy != "" {
-		t.Fatalf("untracked: %+v, %v", got, err)
+	// No commit yet: untracked is owed at the first commit, not broken.
+	if got, err := ClockFile(ctx, root, clock); err != nil || got.Tracked || got.IgnoredBy != "" || !got.Unborn || got.Severity() != SeverityWarn {
+		t.Fatalf("untracked before the first commit: %+v, %v; want Unborn and a warning", got, err)
 	}
-	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("/.tool/*\n"), 0o644); err != nil {
+	ignore := filepath.Join(root, ".gitignore")
+	if err := os.WriteFile(ignore, []byte("/.tool/*\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	// An ignore rule survives the first commit, so it fails even now.
 	got, err := ClockFile(ctx, root, clock)
-	if err != nil || !strings.HasPrefix(got.IgnoredBy, ".gitignore:1:") {
-		t.Fatalf("ignored: %+v, %v; want the rule .gitignore:1:", got, err)
+	if err != nil || !strings.HasPrefix(got.IgnoredBy, ".gitignore:1:") || !got.Unborn || got.Severity() != SeverityFail {
+		t.Fatalf("ignored before the first commit: %+v, %v; want the rule .gitignore:1: and a failure", got, err)
 	}
-	git("add", "-f", "--", clock)
-	if got, err := ClockFile(ctx, root, clock); err != nil || !got.Tracked {
+	git("add", "--", ignore)
+	git("commit", "-q", "-m", "first")
+	got, err = ClockFile(ctx, root, clock)
+	if err != nil || got.Unborn || !strings.HasPrefix(got.IgnoredBy, ".gitignore:1:") || got.Severity() != SeverityFail {
+		t.Fatalf("ignored after the first commit: %+v, %v", got, err)
+	}
+	if err := os.Remove(ignore); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := ClockFile(ctx, root, clock); err != nil || got.Unborn || got.IgnoredBy != "" || got.Severity() != SeverityFail {
+		t.Fatalf("untracked after the first commit: %+v, %v; want a failure", got, err)
+	}
+	git("add", "--", clock)
+	if got, err := ClockFile(ctx, root, clock); err != nil || !got.Tracked || got.Severity() != SeverityOK {
 		t.Fatalf("tracked: %+v, %v", got, err)
 	}
 }
