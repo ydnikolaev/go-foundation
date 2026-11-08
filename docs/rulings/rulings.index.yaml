@@ -9,5 +9,5 @@ decisions:
 - {id: R-5, date: 2026-11-08, status: ruled, by: owner, summary: 'Registry: derived from go.mod and copy stamps; the hand-kept list lives in the host registry', area: [scripts/consumers.py, UNITS.md]}
 - {id: R-6, date: 2026-11-08, status: ruled, by: owner, summary: 'Visibility: one public repo, Apache-2.0, no private sibling; make public-scan guards it', area: [LICENSE, config/public-allowlist.txt, scripts/public-scan.py, mk/public.mk]}
 - {id: R-7, date: 2026-11-08, status: ruled, by: owner, summary: 'Unit tags: the session pushes units/<id>/vX.Y.Z after unit-release.sh and public-scan pass', area: [scripts/unit-release.sh, .claude/rules/units.md]}
-- {id: R-8, date: 2026-11-08, status: ruled, by: cto, summary: 'agentdocs unit: embedded agent docs, install, drift, surface links and pointer, ported from a2a', area: [units/*, docs/features/active/agentdocs-2026-11/specs/*]}
+- {id: R-8, date: 2026-11-08, status: ruled, by: cto, summary: 'agentdocs unit: embedded agent docs, install, drift, surface links and pointer, ported from a2a', area: [units/*, docs/features/archive/2026/agentdocs-2026-11/specs/*]}
 - {id: R-9, date: 2026-11-08, status: ruled, by: owner, summary: 'Go floor: config/go-floor is the oldest supported Go release, 1.26.0; moved each August', area: [units/*/go.mod, config/go-floor]}
