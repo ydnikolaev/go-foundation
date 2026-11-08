@@ -1,0 +1,9 @@
+# managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
+# The kit's own files: covered by CHECK_EXTRA (kit-check), nothing extra to select. Read after config/check-map.
+.devkit/** -
+mk/kit-*.mk -
+scripts/kit/** -
+.claude/rules/kit-*.md -
+.copier-answers.devkit.yml -
+.devkit-sandbox -
+GNUmakefile -

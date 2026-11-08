@@ -1,0 +1,3 @@
+# managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
+# The go pack's dependency cache a lane may read, read-only (R-155): one path per line, relative to the main checkout. kit-go.mk's GOMODCACHE.
+.cache/go/mod

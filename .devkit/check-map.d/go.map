@@ -1,0 +1,6 @@
+# managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
+# The go pack's selection: a changed Go file or module file runs kit-go-test on that module. Read after config/check-map.
+**/*.go kit-go-test
+**/go.mod kit-go-test
+**/go.sum kit-go-test
+@test-gate kit-go-test

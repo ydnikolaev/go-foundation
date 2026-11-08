@@ -1,0 +1,4 @@
+# Project-owned: devkit seeded this once and never touches it again. Add your own entries.
+.artifacts/
+__pycache__/
+*.pyc

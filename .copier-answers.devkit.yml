@@ -1,0 +1,18 @@
+# managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
+# This file records the answers devkit was applied with; `copier update` reads it.
+_commit: v0.8.52
+_src_path: /Users/yuranikolaev/.devkit/current
+deploy_branches: detect
+heavy_targets: ''
+id_prefix: GF
+light_targets: ''
+modules:
+- go
+- docs
+port_base: 7800
+port_span: 100
+prefix: GF
+project: go-foundation
+queue_cores: 6
+queue_cores_map: ''
+trunk: main

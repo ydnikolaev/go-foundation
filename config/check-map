@@ -1,0 +1,22 @@
+# Project-owned: devkit seeded this once and never touches it again. Edit freely.
+# Which make target covers which changed paths: `make check` runs the targets the changed paths select.
+# Row: <glob> <target>...   or   <glob> -   (kit gates cover it; nothing extra). First matching row wins per path.
+# Globs are anchored at the repo root: `*` stays inside one path segment, a `**` segment matches zero or more segments.
+# Once the Makefile has the `check-full: KIT_TIER := full` line, `make check` refuses a changed path no row matches.
+# After this file your fragments apply (config/check-map.d/*.map, sorted), then the kit's own rows
+# (.devkit/check-map.d/*.map: .devkit/**, mk/kit-*.mk, scripts/kit/**, ...).
+
+# what devkit seeded: nothing to run beyond the kit gates
+Makefile -
+mk/*.mk -
+CLAUDE.md -
+AGENTS.md -
+.claude/** -
+config/** -
+docs/** -
+**/*.md -
+.gitignore -
+.sops.yaml -
+
+# Everything else is yours to map. Uncomment the catch-all and replace `test` with your test target.
+# ** test
