@@ -1,0 +1,14 @@
+# This repo's foundation description (devkit foundation reads it; standards/foundation.md section 6). Yours: edit in place.
+stack = "go"
+# The Go module path of this repo, no scheme and no trailing slash (github.com/<owner>/<repo>); needed once a unit exists.
+module_root = "github.com/ydnikolaev/go-foundation"
+
+[toolchain]
+# The lowest Go line any consumer builds with (for example "1.22").
+floor = "1.26.0"
+# The newest Go release on the host (for example "1.24").
+newest = "1.27.2"
+
+[lint]
+# The pinned golangci-lint version (for example "v2.1.6").
+golangci = "v2.15.0"

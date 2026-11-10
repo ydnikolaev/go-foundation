@@ -18,17 +18,8 @@ docs/** -
 .gitignore -
 .sops.yaml -
 
-# go-foundation: units-check and units-test run in CHECK_EXTRA (mk/units.mk), so their inputs select nothing extra
-scripts/units.py -
-scripts/test-units.py -
-scripts/consumers.py -
-scripts/test-consumers.py -
-units/*/unit.json -
-units/*/releasenotes/** -
-go.work -
+# go-foundation: the unit gate is the foundation module's kit-foundation-check (in every make check); the rows below are ours
 UNITS.md -
-LICENSE -
-scripts/unit-release.sh -
 units/*/testdata/** kit-go-test
 
 # public-scan-test runs in CHECK_EXTRA (mk/public.mk); public-scan itself needs gh and runs before a push (R-6)

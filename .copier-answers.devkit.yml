@@ -3,12 +3,14 @@
 _commit: v0.8.58
 _src_path: /Users/yuranikolaev/.devkit/current
 deploy_branches: detect
+foundation_module_root: github.com/ydnikolaev/go-foundation
 heavy_targets: ''
 id_prefix: GF
 light_targets: ''
 modules:
 - go
 - docs
+- foundation
 port_base: 7800
 port_span: 100
 prefix: GF

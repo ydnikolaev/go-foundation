@@ -1,5 +1,5 @@
 # Adoption notes for consumers of this unit, in the adoption unit's schema.
-schema: go-foundation/releasenotes/v1
+schema: foundation/releasenotes/v1
 version: 0.2.0
 released: 2026-11-08
 headline: Nothing the unit touches leaves the root the caller names, symlinks included
@@ -27,5 +27,9 @@ changes:
       why: >-
         A 0.1.0 call does not compile against 0.2.0, so the compiler names every call site; the work is to
         pass the repository root and a path relative to it, never a root wider than the repository (a
-        user-level install names its own root). No detect: the compiler is the check, and a too-wide root
-        is a reviewer's call, not a pattern.
+        user-level install names its own root). The detect is the compiler: go vet builds every package and
+        test of the consumer, so it exits non-zero exactly while a call to Install, Installed, Drift or
+        UpsertPointer still has the 0.1.0 shape. A too-wide root compiles, so it is a reviewer's call, not
+        a pattern, and no detect sees it.
+      detect:
+        - go vet ./...

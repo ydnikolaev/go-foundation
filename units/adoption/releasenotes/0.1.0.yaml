@@ -1,5 +1,5 @@
 # Adoption notes for consumers of this unit, in the unit's own schema (dogfood).
-schema: go-foundation/releasenotes/v1
+schema: foundation/releasenotes/v1
 version: 0.1.0
 released: 2026-11-08
 headline: First release, extracted from a2ahub internal/notes at b5f12155

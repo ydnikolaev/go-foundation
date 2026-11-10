@@ -2,8 +2,7 @@
   "id": "agentdocs",
   "kind": "module",
   "stack": "go",
-  "summary": "A CLI's embedded agent docs: the manifest and topics, install with a provenance stamp, install drift for a doctor row, the verified agent-runtime surface rows and their link, the context-file pointer block, and a staleness check for generated files.",
+  "summary": "A CLI's embedded agent docs: manifest and topics, install with a provenance stamp and drift check, the verified agent-runtime surfaces and link, the context-file pointer block, and a staleness check.",
   "stability": "experimental",
-  "pairs": [],
-  "provenance": {"repo": "ydnikolaev/a2ahub", "path": "skill/manifest.go internal/cli/cmd_skill.go internal/cli/cmd_doctor.go internal/cli/cmd_init.go internal/cli/cli.go internal/surface", "sha": "802fc17a"}
+  "pairs": []
 }

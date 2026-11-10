@@ -1,5 +1,5 @@
 # Adoption notes for consumers of this unit, in the adoption unit's schema.
-schema: go-foundation/releasenotes/v1
+schema: foundation/releasenotes/v1
 version: 0.1.0
 released: 2026-11-08
 headline: First release, ported from a2ahub skill/, internal/surface and internal/cli at 802fc17a

@@ -1,1 +1,0 @@
-1.26.0  # R-9: the oldest supported Go release (go.dev/doc/devel/release), moved each August; a unit go.mod may not exceed it
