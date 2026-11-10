@@ -618,6 +618,7 @@ def refuse(why: str, verb: str) -> int:
 
 
 STUB_MARK = "STUB:"
+BINDING_RECORD = "plans/backlog-binding.md"  # the architect's record of backlog items bound to the epic (`devkit epic ready`)
 SLUG_RE = re.compile(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*")
 CLOSED_PHASES = ("done", "deferred", "re-scoped")
 
@@ -662,6 +663,9 @@ def cmd_feature_archive(slug: str) -> int:
     src = root() / "docs/features/active" / slug
     if not SLUG_RE.fullmatch(slug) or not src.is_dir():
         sys.exit(f"feature archive: no active work folder '{slug}'")
+    if (src / BINDING_RECORD).is_file():
+        sys.exit(f"feature archive: refused\n  {BINDING_RECORD} binds backlog items to this epic; "
+                 f"the close flips them to done, a plain move would leave them scheduled · next: devkit epic close {slug}")
     problems = []
     readme = src / "README.md"
     if not readme.is_file():

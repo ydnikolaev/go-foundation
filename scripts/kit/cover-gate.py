@@ -451,6 +451,23 @@ def lane_branch() -> str | None:
     return branch.strip() if code == 0 and remote.strip() == "." else None
 
 
+def unmeasured(tree: str) -> list[str]:
+    """The stacks with a floors file whose whole-tree measure in this checkout is not current for `tree` (the git tree key
+    check-select reuses by): absent, headless, taken on a dirty tree, or taken at a commit of another tree (FB-711)."""
+    missing = []
+    for stack in group(coverage_files()):
+        path = MEASURE_DIR / f"{stack}.measure"
+        try:
+            first = path.read_text(encoding="utf-8").splitlines()[:1]
+        except (OSError, UnicodeDecodeError):
+            first = []
+        head = first[0][len("# head "):].strip() if first and first[0].startswith("# head ") else ""
+        code, got = git("rev-parse", "--verify", "--quiet", f"{head}^{{tree}}") if head and not head.endswith("+dirty") else (1, "")
+        if code != 0 or got.strip() != tree:
+            missing.append(stack)
+    return missing
+
+
 def rewrite(floors: Floors | None, measure: list[tuple[str, int, int, str]]) -> tuple[str, list[str], list[str], list[str], list[str]]:
     """(new text, raised, new, dropped, zero-covered units not written)."""
     lines = list(floors.lines) if floors else []
@@ -529,12 +546,11 @@ def cmd_raise(into: str | None = None) -> int:
     if into_match is not None and into_match["stack"] not in measures:
         raise Usage(f"--into {into!r}: this checkout holds no measure for that stack: run {ROAD} first")
     if not measures and not files:
-        out("coverage-raise: nothing measured in this checkout: make check-full first")
+        out(f"coverage-raise: nothing measured in this checkout: run {ROAD} first")
         return 0
     for stack, path in files.items():
         if stack not in measures:
-            refusals.append(f"coverage-raise: {path} exists but this checkout holds no measure for {stack}: run {ROAD} first "
-                            f"(a reused gate run measures nothing here)")
+            refusals.append(f"coverage-raise: {path} exists but this checkout holds no measure for {stack}: run {ROAD} first")
     heads = {}
     for stack, path in measures.items():
         lines = path.read_text(encoding="utf-8").splitlines()

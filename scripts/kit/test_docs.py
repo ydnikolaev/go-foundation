@@ -537,6 +537,15 @@ class FeatureTests(Base):
         self.assertTrue((self.root / f"docs/features/archive/{year}/dev-env/tracker.yaml").is_file())
         self.assertClean()
 
+    def test_archive_refused_with_a_backlog_binding_record(self):
+        self._filled("dev-env", "done")
+        self.w("docs/features/active/dev-env/plans/backlog-binding.md", "| id | decision | reason |\n|---|---|---|\n")
+        code, out = self.run_tool("feature", "archive", "dev-env")
+        self.assertNotEqual(code, 0)
+        self.assertIn("next: devkit epic close dev-env", out)
+        self.assertTrue((self.root / "docs/features/active/dev-env/tracker.yaml").is_file())
+        self.assertFalse((self.root / "docs/features/archive").exists())
+
     def test_archive_unknown_slug(self):
         self.assertNotEqual(self.run_tool("feature", "archive", "nope")[0], 0)
 

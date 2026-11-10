@@ -1,0 +1,15 @@
+# managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
+# The go module's lint baseline (R-214, FB-724), run by `make kit-go-lint` (part of `make check`) with golangci-lint v2.
+# Only the three linters R-214 names; the exemption is a `//nolint:<linter> // <why>` on the line, which nolintlint polices.
+version: "2"
+linters:
+  default: none
+  enable:
+    - errorlint # %w for wrapped errors, errors.Is / errors.As instead of == and type assertions
+    - wrapcheck # an error from another package is wrapped before it is returned
+    - nolintlint # a //nolint names its linter, says why, and is still needed
+  settings:
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false

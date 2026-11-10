@@ -32,12 +32,48 @@ $(KIT_CACHE_STAMP):
 CHECK_EXTRA += cache-trim-auto
 CHECK_FULL += cache-trim-test
 
-.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test
+.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test kit-go-lint kit-go-grep
+
+# FB-725 (R-214): grep gates in every `make check`: no //nolint and no time.Sleep in a _test.go (code keeps the explained //nolint:<linter> // <why>, nolintlint polices it). Whole-tree like
+# the lint above, for the same reason: a rule that only fires on touched files lets old breaches hide.
+CHECK_EXTRA += kit-go-grep
+
+# FB-724 (R-214): the lint baseline, .golangci.yml (managed, errorlint + wrapcheck + nolintlint), in every `make check`.
+# Whole-tree on purpose, not selected by changed paths: golangci-lint is cached (GOLANGCI_LINT_CACHE) and a rule that
+# only fires on touched files lets old breaches hide. GOLANGCI_LINT names the binary (a test points it at a missing one).
+#
+# FB-768: golangci-lint takes a host-wide lock (os.TempDir()/golangci-lint.lock) and by default gives up after 5 s with
+# "parallel golangci-lint is running", so gates of several repos at once went red. --allow-serial-runners waits on the
+# lock instead (retry every 1 s, no deadline); --allow-parallel-runners would drop the lock, so it is not used.
+GOLANGCI_LINT ?= golangci-lint
+CHECK_EXTRA += kit-go-lint
 
 # Not in CHECK_EXTRA: .devkit/check-map.d/go.map selects it from the changed Go paths (`make check`), and check-full
 # runs it once over every module. KIT_CHECK_PATHS (set by the runner) names the paths; empty means the whole tree.
 kit-go-test: ## Go tests for the changed packages (KIT_CHECK_PATHS), else every module's ./...
 	@bash scripts/kit/go-test.sh
+
+kit-go-lint: ## golangci-lint v2 baseline (.golangci.yml: errorlint, wrapcheck, nolintlint) in every go.mod dir; refuses without the binary
+	@mods="$$(git ls-files -co --exclude-standard -- go.mod '*/go.mod' | sort -u)"; \
+	if [ -z "$$mods" ]; then echo "kit-go-lint: no go.mod: nothing to lint"; exit 0; fi; \
+	bin="$$(command -v "$(GOLANGCI_LINT)" 2>/dev/null)"; \
+	if [ -z "$$bin" ]; then \
+		echo "kit-go-lint: $(GOLANGCI_LINT) is not installed: not a pass. Install v2: brew install golangci-lint, or go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest" >&2; exit 2; fi; \
+	case "$$("$$bin" --version 2>&1)" in *"version 2."*) ;; *) \
+		echo "kit-go-lint: $$bin is not golangci-lint v2 (.golangci.yml is version 2; pin: config/versions.toml [template] in devkit): upgrade it" >&2; exit 2 ;; esac; \
+	[ -f .golangci.yml ] || { echo "kit-go-lint: .golangci.yml is missing: run devkit update --apply" >&2; exit 2; }; \
+	rc=0; \
+	for gomod in $$mods; do \
+		[ -f "$$gomod" ] || continue; \
+		dir="$$(dirname "$$gomod")"; \
+		if [ "$$dir" != . ]; then case "/$$dir/" in */testdata/*|*/vendor/*|*/_*|*/.?*) continue ;; esac; fi; \
+		echo "kit-go-lint: $$dir"; \
+		(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$(CURDIR)/.golangci.yml" ./...) || rc=1; \
+	done; \
+	exit $$rc
+
+kit-go-grep: ## Refuse //nolint and time.Sleep in _test.go files (whole tree)
+	@bash scripts/kit/go-test-grep.sh
 
 cache-trim: ## Trim Go caches now (age + size caps)
 	@bash scripts/kit/cache-trim.sh --force

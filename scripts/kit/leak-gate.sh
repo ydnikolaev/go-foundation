@@ -179,7 +179,7 @@ else
     if run "$timeout_s" "$tmp/insp.out" docker inspect -f '{{.Created}} {{.Name}}' "$id"; then
       awk -v id="$id" -v start="$start" -v now="$cnow" -v cut="$cut_to" "$to_epoch" "$tmp/insp.out" >"$tmp/one.txt"
       if grep -q -x -F "$id" "$tmp/shared.txt"; then
-        # FB-603 (devkit-workaround: FB-717, consumer name removed): the awk clamps the age at 0; the optional '-' is a second guard
+        # FB-603: the awk clamps the age at 0; the optional '-' is a second guard
         sed 's/^container [^ ]*  age -\{0,1\}[0-9]*s  \(.*\)$/kit-leak: shared container \1 kept/' "$tmp/one.txt" >>"$tmp/kept.txt"
       else
         cat "$tmp/one.txt" >>"$survivors"

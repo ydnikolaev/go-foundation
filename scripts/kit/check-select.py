@@ -52,7 +52,8 @@ the newest line that satisfies the ask wins: same tree, dirty false, exit 0, und
 targets with exit 0, and tier full for a full ask. A hit runs no target and appends nothing; it prints
 `check-select: reuse <tier> verdict of <finished> for tree <key12>` and the summary says `ran nothing (reused)`. A miss
 prints `check-select: no reuse: <reason>`, the reason one of no-verdict, other-tree, dirty, red-last, stale, other-targets
-(a line of this tree did not run every asked target, or a light line was asked for full). KIT_REUSE=0 forces a run. A
+(a line of this tree did not run every asked target, or a light line was asked for full), no-measure (a full ask, and a stack
+with a floors file has no whole-tree measure of this tree in this checkout: the run takes it, FB-711). KIT_REUSE=0 forces a run. A
 selection that selects nothing runs and records nothing; outside a git work tree, or on an unborn HEAD, no verdict is read
 or written.
 
@@ -1032,6 +1033,8 @@ def reuse_or_run(verdicts: Verdicts, tier: str, order: list[str], cover_red: int
             hit, why = None, "KIT_REUSE=0"
         else:
             hit, why = verdicts.find(tier, order)
+            if hit is not None and tier == "full" and unmeasured(verdicts.tree):
+                hit, why = None, "no-measure"  # FB-711: only a run takes the measure `coverage-raise` reads
         if hit is not None:
             say(f"{TAG} reuse {hit.get('tier')} verdict of {hit.get('finished')} for tree {verdicts.tree[:12]}")
             return [], [], True
@@ -1189,6 +1192,28 @@ def record(argv: list[str]) -> int:
     return 0
 
 
+def cover_module():
+    """The cover-gate.py module beside this script, loaded afresh; None when the project has no such script."""
+    path = Path(__file__).resolve().parent / "cover-gate.py"
+    if not path.is_file():
+        return None
+    sys.dont_write_bytecode = True
+    spec = importlib.util.spec_from_file_location("kit_cover_gate", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def unmeasured(tree: str) -> list[str]:
+    """The stacks with a floors file and no current whole-tree measure of `tree` (cover-gate.py `unmeasured`); none where
+    the script is absent, older, or unreadable: reuse then stays as it was."""
+    try:
+        module = cover_module()
+        return module.unmeasured(tree) if module is not None and hasattr(module, "unmeasured") else []
+    except Exception:
+        return []
+
+
 def cover_config(diff_base: str | None) -> int:
     """The floors files (scripts/kit/cover-gate.py `config`), checked in process against the base this run resolved once.
     KIT_COVER_BASE carries that base to the targets, and is dropped when there is none, so a stale export never wins (LR-1).
@@ -1197,14 +1222,10 @@ def cover_config(diff_base: str | None) -> int:
         os.environ["KIT_COVER_BASE"] = diff_base
     else:
         os.environ.pop("KIT_COVER_BASE", None)
-    path = Path(__file__).resolve().parent / "cover-gate.py"
-    if not path.is_file():
-        return 0
-    sys.dont_write_bytecode = True
     try:
-        spec = importlib.util.spec_from_file_location("kit_cover_gate", path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        module = cover_module()
+        if module is None:
+            return 0
         code = module.run_config(diff_base or None)
     except Exception as exc:  # a broken script is red, never a silent pass
         say(f"{TAG} cover-gate.py: {exc}", err=True)

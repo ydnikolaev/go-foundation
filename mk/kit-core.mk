@@ -51,3 +51,10 @@ devkit-commit: ## Commit exactly the files in P as one conventional commit: make
 	[ -z "$$DEVKIT_COMMIT_SCOPE" ] || set -- "$$@" --scope="$$DEVKIT_COMMIT_SCOPE"; \
 	[ -z "$$DEVKIT_COMMIT_CLOSES" ] || set -- "$$@" --closes="$$DEVKIT_COMMIT_CLOSES"; \
 	$(KIT_DEVKIT) commit --type="$$DEVKIT_COMMIT_TYPE" --message="$$DEVKIT_COMMIT_M" "$$@" -- $$DEVKIT_COMMIT_P
+
+# This project's page of the host overview (`devkit overview`, standards/make.md §7): built first when missing or stale,
+# then opened. OVERVIEW_FLAGS passes more flags (`--no-open` prints the page path only).
+OVERVIEW_FLAGS ?=
+.PHONY: devkit-overview
+devkit-overview: ## Open this project's page of devkit overview
+	$(KIT_DEVKIT) overview --project $(CURDIR) $(OVERVIEW_FLAGS)
