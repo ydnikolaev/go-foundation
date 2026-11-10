@@ -90,7 +90,10 @@ func Install(tree fs.FS, dir, root, target string, t Tool, force bool) (written 
 // cannot be removed, so target "." loses its entries instead.
 func wipe(r *os.Root, target string) error {
 	if filepath.Clean(target) != "." {
-		return r.RemoveAll(target)
+		if err := r.RemoveAll(target); err != nil {
+			return fmt.Errorf("removing target %s: %w", target, err)
+		}
+		return nil
 	}
 	entries, err := readDir(r, ".")
 	if err != nil {
@@ -98,7 +101,7 @@ func wipe(r *os.Root, target string) error {
 	}
 	for _, e := range entries {
 		if err := r.RemoveAll(e.Name()); err != nil {
-			return err
+			return fmt.Errorf("removing %s: %w", e.Name(), err)
 		}
 	}
 	return nil
@@ -107,10 +110,14 @@ func wipe(r *os.Root, target string) error {
 func readDir(r *os.Root, name string) ([]fs.DirEntry, error) {
 	f, err := r.Open(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("opening directory %s: %w", name, err)
 	}
 	defer func() { _ = f.Close() }()
-	return f.ReadDir(-1)
+	entries, err := f.ReadDir(-1)
+	if err != nil {
+		return nil, fmt.Errorf("listing directory %s: %w", name, err)
+	}
+	return entries, nil
 }
 
 // writeTree materializes tree's dir subtree under target, dir stripped.
@@ -130,18 +137,21 @@ func writeTree(tree fs.FS, dir string, r *os.Root, target string) (int, error) {
 		}
 		data, err := fs.ReadFile(tree, p)
 		if err != nil {
-			return err
+			return fmt.Errorf("reading %s from the tree: %w", p, err)
 		}
 		if err := r.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
-			return err
+			return fmt.Errorf("creating directory for %s: %w", dest, err)
 		}
 		if err := r.WriteFile(dest, data, 0o644); err != nil {
-			return err
+			return fmt.Errorf("writing %s: %w", dest, err)
 		}
 		count++
 		return nil
 	})
-	return count, err
+	if err != nil {
+		return count, fmt.Errorf("walking tree %s into %s: %w", dir, target, err)
+	}
+	return count, nil
 }
 
 // provenance renders PROVENANCE.md: the marker, the comparable line, then the

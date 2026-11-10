@@ -58,7 +58,7 @@ func resolve(r *os.Root, name string) (string, error) {
 				return filepath.Join(append([]string{p}, parts[i+1:]...)...), nil
 			}
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("inspecting %s: %w", p, err)
 			}
 			if info.Mode()&fs.ModeSymlink == 0 {
 				done = p
@@ -69,7 +69,7 @@ func resolve(r *os.Root, name string) (string, error) {
 			}
 			dest, err := r.Readlink(p)
 			if err != nil {
-				return "", err
+				return "", fmt.Errorf("reading link %s: %w", p, err)
 			}
 			next = filepath.Join(append([]string{done, dest}, parts[i+1:]...)...)
 			if filepath.IsAbs(dest) || !filepath.IsLocal(next) {

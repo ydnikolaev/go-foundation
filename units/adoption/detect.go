@@ -3,6 +3,7 @@ package adoption
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"regexp"
 )
@@ -25,7 +26,7 @@ func DefaultDetectRunner(ctx context.Context, command string) (bool, error) {
 	if errors.As(err, &exitErr) {
 		return true, nil
 	}
-	return false, err
+	return false, fmt.Errorf("running detect command: %w", err)
 }
 
 // templatePlaceholder matches a `<word ...>` placeholder: a value the reader

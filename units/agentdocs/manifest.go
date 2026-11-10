@@ -119,7 +119,7 @@ func (m Manifest) Read(tree fs.FS, topic string) ([]byte, error) {
 	b, err := fs.ReadFile(tree, s.File)
 	if err != nil {
 		return nil, &Error{Op: "Read", Input: s.ID,
-			Err: fmt.Errorf("%w: section %q names %s: %v", ErrPageMissing, s.ID, s.File, err)}
+			Err: fmt.Errorf("%w: section %q names %s: %w", ErrPageMissing, s.ID, s.File, err)}
 	}
 	return b, nil
 }

@@ -2,6 +2,7 @@ package agentdocs_test
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -18,9 +19,13 @@ import (
 
 func install(tree fs.FS, dir, target string, tl agentdocs.Tool, force bool) (int, error) {
 	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return 0, err
+		return 0, fmt.Errorf("creating the parent of %s: %w", target, err)
 	}
-	return agentdocs.Install(tree, dir, filepath.Dir(target), filepath.Base(target), tl, force)
+	n, err := agentdocs.Install(tree, dir, filepath.Dir(target), filepath.Base(target), tl, force)
+	if err != nil {
+		return n, fmt.Errorf("installing %s: %w", target, err)
+	}
+	return n, nil
 }
 
 func installed(target string, tl agentdocs.Tool) agentdocs.InstallStatus {
@@ -28,11 +33,19 @@ func installed(target string, tl agentdocs.Tool) agentdocs.InstallStatus {
 }
 
 func drift(tree fs.FS, dir, target string) (agentdocs.TreeDrift, error) {
-	return agentdocs.Drift(tree, dir, filepath.Dir(target), filepath.Base(target))
+	d, err := agentdocs.Drift(tree, dir, filepath.Dir(target), filepath.Base(target))
+	if err != nil {
+		return d, fmt.Errorf("drift of %s: %w", target, err)
+	}
+	return d, nil
 }
 
 func upsertAt(path, name, body string) (bool, error) {
-	return agentdocs.UpsertPointer(filepath.Dir(path), filepath.Base(path), name, body)
+	changed, err := agentdocs.UpsertPointer(filepath.Dir(path), filepath.Base(path), name, body)
+	if err != nil {
+		return changed, fmt.Errorf("upserting the pointer in %s: %w", path, err)
+	}
+	return changed, nil
 }
 
 // home is a directory outside the repository root, standing in for the

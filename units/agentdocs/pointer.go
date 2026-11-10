@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -104,7 +105,7 @@ func replaceFile(r *os.Root, name string, data []byte) (err error) {
 	tmp := filepath.Join(filepath.Dir(name), "."+filepath.Base(name)+"."+rand.Text()+".tmp")
 	f, err := r.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_EXCL, perm)
 	if err != nil {
-		return err
+		return fmt.Errorf("creating temporary file %s: %w", tmp, err)
 	}
 	defer func() {
 		if err != nil {
@@ -113,18 +114,21 @@ func replaceFile(r *os.Root, name string, data []byte) (err error) {
 		}
 	}()
 	if _, err = f.Write(data); err != nil {
-		return err
+		return fmt.Errorf("writing temporary file %s: %w", tmp, err)
 	}
 	if err = f.Chmod(perm); err != nil { // the umask applied at create
-		return err
+		return fmt.Errorf("setting permissions on %s: %w", tmp, err)
 	}
 	if err = f.Sync(); err != nil {
-		return err
+		return fmt.Errorf("syncing temporary file %s: %w", tmp, err)
 	}
 	if err = f.Close(); err != nil {
-		return err
+		return fmt.Errorf("closing temporary file %s: %w", tmp, err)
 	}
-	return r.Rename(tmp, name)
+	if err = r.Rename(tmp, name); err != nil {
+		return fmt.Errorf("renaming %s to %s: %w", tmp, name, err)
+	}
+	return nil
 }
 
 // findStarts returns the [begin, end) span of every start marker: prefix

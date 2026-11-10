@@ -2,6 +2,7 @@ package agentdocs
 
 import (
 	"bytes"
+	"fmt"
 	"io/fs"
 	"os"
 	"path"
@@ -102,7 +103,7 @@ func Drift(tree fs.FS, dir, root, target string) (TreeDrift, error) {
 		res.Total++
 		want, err := fs.ReadFile(tree, p)
 		if err != nil {
-			return err
+			return fmt.Errorf("reading %s from the tree: %w", p, err)
 		}
 		if !onDisk[rel] {
 			res.Missing = append(res.Missing, rel)

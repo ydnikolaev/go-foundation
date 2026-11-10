@@ -2,6 +2,7 @@ package agentdocs
 
 import (
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -222,7 +223,7 @@ func linkState(r *os.Root, entry, name, target string) (exists, owned bool, err 
 		if errors.Is(err, fs.ErrNotExist) {
 			return false, false, nil
 		}
-		return false, false, err
+		return false, false, fmt.Errorf("inspecting %s: %w", entry, err)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		dest, err := r.Readlink(entry)

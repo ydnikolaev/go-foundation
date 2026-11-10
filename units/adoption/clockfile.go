@@ -3,6 +3,7 @@ package adoption
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os/exec"
 	"strings"
 )
@@ -58,7 +59,7 @@ func ClockFile(ctx context.Context, root, path string) (ClockFileStatus, error) 
 	}
 	var exit *exec.ExitError
 	if !errors.As(err, &exit) {
-		return ClockFileStatus{}, err
+		return ClockFileStatus{}, fmt.Errorf("asking git whether %s is tracked: %w", path, err)
 	}
 	if exit.ExitCode() == 128 {
 		return ClockFileStatus{}, ErrNotAGitRepo
@@ -69,7 +70,7 @@ func ClockFile(ctx context.Context, root, path string) (ClockFileStatus, error) 
 	case errors.As(err, &exit) && exit.ExitCode() == 1:
 		st.Unborn = true
 	default:
-		return ClockFileStatus{}, err
+		return ClockFileStatus{}, fmt.Errorf("asking git whether %s has a commit: %w", root, err)
 	}
 	out, err := exec.CommandContext(ctx, "git", "-C", root, "check-ignore", "-v", "--", path).Output()
 	if err == nil {
@@ -79,5 +80,5 @@ func ClockFile(ctx context.Context, root, path string) (ClockFileStatus, error) 
 	if errors.As(err, &exit) && exit.ExitCode() == 1 {
 		return st, nil
 	}
-	return ClockFileStatus{}, err
+	return ClockFileStatus{}, fmt.Errorf("asking git which rule ignores %s: %w", path, err)
 }
