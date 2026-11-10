@@ -1,0 +1,6 @@
+system: gofoundation
+spaces:
+  - id: devkit
+    repo_url: /Users/yuranikolaev/.local/share/a2a/spaces/devkit.git
+    mirror_location: devkit
+adapted_through: 0.27.3

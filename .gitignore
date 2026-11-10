@@ -2,3 +2,9 @@
 .artifacts/
 __pycache__/
 *.pyc
+.a2a/cache/
+.a2a/staging/
+.a2a/feedback/
+.a2a/dashboard.html
+.a2ahub/
+.claude/skills/a2ahub
