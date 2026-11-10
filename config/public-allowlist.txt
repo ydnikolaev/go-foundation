@@ -6,3 +6,6 @@ name a2ahub
 name sporo
 name devkit
 name go-foundation
+name a2a
+exempt .copier-answers.devkit.yml host-path tool-written: devkit records its local source path in _src_path; the exemption is per file, the scanner has no per-field form
+exempt .a2a/config.yaml host-path tool-written: a2a records the local space path in repo_url; the exemption is per file, the scanner has no per-field form
