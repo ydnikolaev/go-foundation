@@ -66,7 +66,8 @@ warns; a flagged unit fails a quiet run (`over budget`, exit 1; a red of its tie
 (LR-1): swap in use, sampled at start, after each target and at end, never above KIT_QUIET_SWAP_MB (env, then
 .devkit/config.env, else 11650); macOS `sysctl -n vm.swapusage`, Linux /proc/meminfo; unreadable is loud. Also (D-2,
 FB-620) the 1-minute load average, read at the same points with os.getloadavg(), never above KIT_QUIET_LOAD (env, then
-.devkit/config.env, else 2 x CPUs); no load reading is judged by swap alone. The optional
+.devkit/config.env, else 1 x CPUs, FB-775); no load reading is judged by swap alone. The over-budget line ends
+`quiet run, load max <x>` or `loud: warn only, load max <x>` (the highest load read; no part when none was). The optional
 config/kit-watch.ini (never seeded) has `[budget] <unit> = <seconds> <ticket> <YYYY-MM-DD>` (a raise: the cap until
 the date) and `[quarantine] <target> = <ticket> <YYYY-MM-DD>` (the target still runs once; its red sets no exit, stops
 no tier and is never reused). It is checked before reuse: a past or more than 14-day date, no ticket or an unnamed unit
@@ -179,7 +180,7 @@ WATCH_MAX_S = 86400.0  # a usable time is at most a day
 RAISE_DAYS = 14  # a raise or quarantine date is at most this many days after today
 # --- end vendored (run.py) ---
 QUIET_SWAP_MB = 11650  # vendored from tests/ops/check_gate_time.py: edit both (LR-1: swap used in MB)
-QUIET_LOAD = 2 * (os.cpu_count() or 1)  # vendored from tests/ops/check_gate_time.py: edit both (D-2: 1-min load average)
+QUIET_LOAD = 1 * (os.cpu_count() or 1)  # vendored from tests/ops/check_gate_time.py: edit both (D-2: 1-min load average; FB-775: 1 x CPUs)
 WATCH_INI = ("config", "kit-watch.ini")
 SWAP_TIMEOUT = 5.0  # seconds one `sysctl` read may take before it counts as unreadable
 SYSCTL = "sysctl"  # the seams of the swap reader: tests point these at fixtures
@@ -518,7 +519,7 @@ def quiet_limit(root: Path) -> float:
 
 
 def quiet_load(root: Path) -> float:
-    """KIT_QUIET_LOAD (D-2): the environment first, then .devkit/config.env, else 2 x the CPU count."""
+    """KIT_QUIET_LOAD (D-2): the environment first, then .devkit/config.env, else 1 x the CPU count (FB-775; was 2 x)."""
     return quiet_bound(root, "KIT_QUIET_LOAD", QUIET_LOAD, "load")
 
 
@@ -734,10 +735,12 @@ class Watch:
         if flag is None:
             say(f"{TAG} grown {unit} {shown(seconds)} s ({median})", err=True)
             return False
+        loads = [value for value in self.loads if value is not None]
+        peak = f", load max {round(max(loads), 2):.10g}" if loads else ""  # FB-775: what made the run quiet or loud
         if self.quiet:
-            say(f"{TAG} over budget {unit} {shown(seconds)} s ({median}, {flag}; quiet run)", err=True)
+            say(f"{TAG} over budget {unit} {shown(seconds)} s ({median}, {flag}; quiet run{peak})", err=True)
             return True
-        say(f"{TAG} over budget {unit} {shown(seconds)} s ({median}, {flag}) (loud: warn only)", err=True)
+        say(f"{TAG} over budget {unit} {shown(seconds)} s ({median}, {flag}) (loud: warn only{peak})", err=True)
         return False
 
     def target(self, target: str, sel: str, seconds: float) -> bool:
