@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// Nower tells the time and nothing else. A type that has only Now satisfies it, so code that never waits can take
+// a Nower and still accept Real, Fake and a consumer's own clock. Clock adds After.
+type Nower interface {
+	// Now is the current time.
+	Now() time.Time
+}
+
 // Clock tells the time and makes timers.
 type Clock interface {
 	// Now is the current time.

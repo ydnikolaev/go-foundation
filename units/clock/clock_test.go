@@ -12,7 +12,16 @@ var start = time.Date(2026, 10, 26, 12, 0, 0, 0, time.UTC)
 var (
 	_ clock.Clock = clock.Real{}
 	_ clock.Clock = (*clock.Fake)(nil)
+
+	_ clock.Nower = clock.Real{}
+	_ clock.Nower = (*clock.Fake)(nil)
+	_ clock.Nower = nowOnly{}
 )
+
+// nowOnly stands for a consumer's own type that has Now and no After.
+type nowOnly struct{}
+
+func (nowOnly) Now() time.Time { return start }
 
 func fired(ch <-chan time.Time) (time.Time, bool) {
 	select {
