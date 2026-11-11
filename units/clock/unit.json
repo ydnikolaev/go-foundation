@@ -1,0 +1,8 @@
+{
+  "id": "clock",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "The time seam: a Clock (Now, After) and a Now-only Nower, the wall-clock Real, and a hand-driven Fake whose timers fire on Advance and Set.",
+  "pairs": []
+}

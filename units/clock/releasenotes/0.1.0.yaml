@@ -1,0 +1,47 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-11
+headline: First release, the time seam taken from a consumer's kit; Fake.Set now moves backwards as well as forwards
+changes:
+  - id: CLOCK-0100-1
+    kind: feat
+    impact: high
+    subject: The clock seam as a shared unit
+    detail: >-
+      Clock (Now, After), Real (the wall clock) and Fake (driven by Advance and Set, with Waiters so a test can wait
+      for the code under test to arm its timer), taken from a consumer's kit at its own tested state.
+    affects:
+      - clock.Clock
+      - clock.Real
+      - clock.Fake
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.
+  - id: CLOCK-0100-2
+    kind: change
+    impact: normal
+    subject: Fake.Set moves the time backwards as well as forwards
+    detail: >-
+      At the source the fake was forward-only: Set with a time before now was a no-op. In this unit Set moves to t in
+      either direction. Forwards it fires every due timer; backwards it fires none and the timers stay armed with
+      their due time. A negative Advance is still ignored. A test that relied on a backward Set being a no-op now
+      sees the time move.
+    affects:
+      - clock.Fake.Set
+    action:
+      scope: none
+      why: >-
+        A consumer test that calls Set with an earlier time and expected the time to stay put must be checked on
+        import; there is no command that tells which tests those are.
+  - id: CLOCK-0100-3
+    kind: feat
+    impact: normal
+    subject: Nower, the Now-only interface
+    detail: >-
+      A consumer type that has only Now() time.Time satisfies clock.Nower, so a consumer whose own clock interface
+      is Now-only can accept Real and Fake without gaining an After. Real and Fake satisfy it.
+    affects:
+      - clock.Nower
+    action:
+      scope: none
+      why: Optional. Code that already takes Clock has nothing to change.

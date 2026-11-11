@@ -1,4 +1,7 @@
 go 1.25.0
 
-use ./units/adoption
-use ./units/agentdocs
+use (
+	./units/adoption
+	./units/agentdocs
+	./units/clock
+)
