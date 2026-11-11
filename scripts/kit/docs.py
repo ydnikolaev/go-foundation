@@ -23,9 +23,11 @@ too, is refused.
 from __future__ import annotations
 
 import argparse
+import configparser
 import datetime
 import fnmatch
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -382,7 +384,30 @@ def glob_overlap(ga: str, gb: str) -> bool:
     return True
 
 
+def generated_paths() -> set[str]:
+    """The exact paths the `[compose]` `generated` rows of config/modules.ini list (FB-798): no overlap verdict sees them.
+    Standalone, as this script is: only the `generated` key's `<path> <make target>` rows are read, so an absent or
+    unreadable file exempts nothing (`scripts/kit/modules.py lint` is the one that judges the file)."""
+    ini = root() / "config" / "modules.ini"
+    if not ini.is_file():
+        return set()
+    cp = configparser.ConfigParser(interpolation=None, inline_comment_prefixes=(";",), default_section="\0no-default-section")
+    cp.optionxform = str  # type: ignore[assignment]
+    try:
+        cp.read_string(ini.read_text(encoding="utf-8"))
+    except (configparser.Error, OSError, UnicodeDecodeError):
+        return set()
+    rows = cp.get("compose", "generated", fallback="")
+    return {posixpath.normpath(w[0]) for w in (line.split() for line in rows.splitlines()) if w}
+
+
+def generated_pair(ga: str, gb: str, generated: set[str]) -> bool:
+    """Is an overlapping pair a generated file? Only an exact path (no glob character) on either side is judged."""
+    return any(not re.search(r"[*?\[{]", g) and posixpath.normpath(g) in generated for g in (ga, gb))
+
+
 def lint_tracker_areas(t: dict) -> list[str]:
+    generated = generated_paths()
     by_wave: dict[int, list[dict]] = {}
     for p in phase_list(t):
         if p.get("status") not in SKIPPED and is_int(p.get("wave")):  # finished phases hold no area
@@ -393,7 +418,7 @@ def lint_tracker_areas(t: dict) -> list[str]:
             for b in group[i + 1:]:
                 for ga in (g for g in as_list(a.get("area")) if isinstance(g, str)):
                     for gb in (g for g in as_list(b.get("area")) if isinstance(g, str)):
-                        if glob_overlap(ga, gb):
+                        if glob_overlap(ga, gb) and not generated_pair(ga, gb, generated):
                             out.append(f"wave {wave}: {a['id']} area '{ga}' overlaps {b['id']} area '{gb}'")
     return out
 
@@ -526,9 +551,10 @@ def lint_cross_ref() -> list[str]:
     out = []
     for f in files:
         rel = f.relative_to(r).parts
-        # research/ notes copy other repos' docs: not scanned, at docs/ or in a work folder (FB-339)
+        # research/ notes copy other repos' docs: not scanned, at docs/ or in a work folder (FB-339);
+        # .claude/worktrees/ holds whole checkouts of agents, each with its own docs (FB-812, FB-813)
         if rel[:2] == ("docs", "research") or (rel[:2] == ("docs", "features") and "research" in rel[2:-1]) \
-                or not f.is_file():
+                or rel[:2] == (".claude", "worktrees") or not f.is_file():
             continue
         bad = set()
         for n, line in enumerate(strip_fences(f.read_text(encoding="utf-8", errors="replace")).splitlines(), 1):

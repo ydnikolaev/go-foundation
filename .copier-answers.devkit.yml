@@ -1,6 +1,6 @@
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
 # This file records the answers devkit was applied with; `copier update` reads it.
-_commit: v0.8.58
+_commit: v0.8.59
 _src_path: /Users/yuranikolaev/.devkit/current
 deploy_branches: detect
 foundation_module_root: github.com/ydnikolaev/go-foundation
