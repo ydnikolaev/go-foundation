@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.1.1
+released: 2026-11-11
+headline: A Fake timer crossed by a jump now delivers its own deadline, not the jump's end time
+changes:
+  - id: CLOCK-0101-1
+    kind: fix
+    impact: normal
+    subject: Fake timers fire with their own deadline
+    detail: >-
+      When Advance or Set carried the fake time past a timer's deadline, the timer's channel received the end time of
+      the jump. It now receives the timer's own deadline (the fake time at After plus d), as a real timer does: After
+      one second then Advance of three seconds delivers start+1s, not start+3s. A timer that fires at once (d <= 0) still
+      delivers the current fake time. A test that read the fired time and expected the jump's end time now sees the
+      deadline.
+    affects:
+      - clock.Fake.After
+      - clock.Fake.Advance
+      - clock.Fake.Set
+    action:
+      scope: none
+      why: The fix is inside the unit and owes the consumer no step; only a test that asserted the old jump-end time would differ, and there is no command that finds one.

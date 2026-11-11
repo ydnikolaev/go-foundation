@@ -57,8 +57,10 @@ func (f *Fake) Now() time.Time {
 	return f.now
 }
 
-// After returns a channel that fires when the fake time reaches now+d; d <= 0 fires at once. The channel has a
-// buffer of one, so a timer nobody reads never blocks Advance.
+// After returns a channel that fires when the fake time reaches now+d; d <= 0 fires at once with the current fake
+// time. Otherwise the channel receives the timer's own deadline, now+d as it was when After was called, even when a
+// jump of Advance or Set carries the fake time past it, as a real timer does. The channel has a buffer of one, so a
+// timer nobody reads never blocks Advance.
 func (f *Fake) After(d time.Duration) <-chan time.Time {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -71,7 +73,8 @@ func (f *Fake) After(d time.Duration) <-chan time.Time {
 	return ch
 }
 
-// Advance moves the fake time forward by d and fires every timer that is due. A negative d is ignored.
+// Advance moves the fake time forward by d and fires every timer that is due; each timer receives its own deadline,
+// not the new fake time. A negative d is ignored.
 func (f *Fake) Advance(d time.Duration) {
 	if d < 0 {
 		return
@@ -81,8 +84,8 @@ func (f *Fake) Advance(d time.Duration) {
 	f.mu.Unlock()
 }
 
-// Set moves the fake time to t, forwards or backwards. Moving forwards fires every timer that is due; moving
-// backwards fires none, because every timer still waiting is due after the current time.
+// Set moves the fake time to t, forwards or backwards. Moving forwards fires every timer that is due, each with its
+// own deadline, not t; moving backwards fires none, because every timer still waiting is due after the current time.
 func (f *Fake) Set(t time.Time) {
 	f.mu.Lock()
 	f.set(t)
@@ -105,7 +108,7 @@ func (f *Fake) set(t time.Time) {
 			kept = append(kept, w)
 			continue
 		}
-		w.ch <- t
+		w.ch <- w.at
 	}
 	clear(f.waiters[len(kept):])
 	f.waiters = kept

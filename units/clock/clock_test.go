@@ -79,8 +79,9 @@ func TestFakeAfter(t *testing.T) {
 			if ok != tt.wantFire {
 				t.Fatalf("fired = %v, want %v", ok, tt.wantFire)
 			}
-			if ok && !got.Equal(f.Now()) {
-				t.Errorf("fired with %v, want the clock's time %v", got, f.Now())
+			// A timer delivers its own deadline, start+wait, never the end of a jump past it; d <= 0 delivers start.
+			if want := start.Add(max(tt.wait, 0)); ok && !got.Equal(want) {
+				t.Errorf("fired with %v, want its deadline %v", got, want)
 			}
 			if ok {
 				if _, again := fired(ch); again {
