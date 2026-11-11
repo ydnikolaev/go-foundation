@@ -34,9 +34,8 @@ func TestFakeNowMovesOnlyByHand(t *testing.T) {
 		t.Errorf("after Advance: %v, want %v", f.Now(), want)
 	}
 	f.Advance(-time.Hour)
-	f.Set(start)
 	if want := start.Add(90 * time.Second); !f.Now().Equal(want) {
-		t.Errorf("time went backwards: %v, want %v", f.Now(), want)
+		t.Errorf("a negative Advance moved the time: %v, want %v", f.Now(), want)
 	}
 	f.Set(start.Add(time.Hour))
 	if want := start.Add(time.Hour); !f.Now().Equal(want) {

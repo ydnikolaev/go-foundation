@@ -74,12 +74,11 @@ func (f *Fake) Advance(d time.Duration) {
 	f.mu.Unlock()
 }
 
-// Set moves the fake time to t (never backwards) and fires every timer that is due.
+// Set moves the fake time to t, forwards or backwards. Moving forwards fires every timer that is due; moving
+// backwards fires none, because every timer still waiting is due after the current time.
 func (f *Fake) Set(t time.Time) {
 	f.mu.Lock()
-	if t.After(f.now) {
-		f.set(t)
-	}
+	f.set(t)
 	f.mu.Unlock()
 }
 
