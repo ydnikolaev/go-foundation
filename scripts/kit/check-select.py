@@ -6,7 +6,7 @@ tracked path (`make check-full`).
     python3 scripts/kit/check-select.py [--map FILE]... [--trunk BRANCH] [--strict]
     python3 scripts/kit/check-select.py --adopted
 
-Env: KIT_TIER (empty/light, or full), KIT_CHECK_BASE (a ref to diff against), KIT_GOALS (make's goals),
+Env: KIT_TIER (empty/light, or full), KIT_CHECK_BASE (a ref to diff against), KIT_CHECK_HEAD (the commit the diff ends at), KIT_GOALS (make's goals),
 KIT_MAKE (the make binary each selected target runs under; default `make`), KIT_MAKE_PID (make's pid). Out, to each target:
 KIT_CHECK_PATHS, KIT_CHECK_MODULES. Stdlib only, python3 >= 3.9.
 
@@ -18,6 +18,9 @@ is `.`), the local trunk (`--trunk`, else KIT_TRUNK in .devkit/config.env), the 
 answer that names a branch absent locally counts as unset (LR-5): local main, then master is tried, a found one is used
 with a `warn:` naming the `trunk` answer (KIT_TRUNK) to set. Unset, or nothing found: strict refuses (exit 3, naming
 `trunk`), else `not checked`, exit 0. Changed set: git diff <merge-base> (committed, staged, unstaged) plus untracked.
+KIT_CHECK_HEAD (FB-882, with KIT_CHECK_BASE only; unset: HEAD and the tree, as above) names the commit the range ends at: the
+merge-base is taken against it and the changed set is `git diff <merge-base> <KIT_CHECK_HEAD>`, no untracked paths. A caller
+that checks one lane's own work after main moved on passes the lane's head; without KIT_CHECK_BASE it is refused (exit 3).
 
 light: each selected target runs as `$KIT_MAKE <target>` with KIT_CHECK_PATHS (newline-separated paths that chose it),
 in tier order (KIT-ONCE, R-196): light targets first, then unclassed ones, then heavy ones, each in map order, classed as
@@ -378,17 +381,32 @@ def resolve(ref: str) -> str | None:
     return git_try("rev-parse", "--verify", "--quiet", ref + "^{commit}")
 
 
+def check_head() -> str | None:
+    """FB-882: KIT_CHECK_HEAD resolved to a commit sha, None when unset; one that names no commit stops the run."""
+    given = os.environ.get("KIT_CHECK_HEAD", "").strip()
+    if not given:
+        return None
+    sha = resolve(given)
+    if sha is None:
+        raise Stop(3, f"{TAG} git rev-parse --verify {given}^{{commit}}: KIT_CHECK_HEAD names no commit",
+                   "next: unset KIT_CHECK_HEAD or name a commit that exists in this clone")
+    return sha
+
+
 def base_of(root: Path, trunk_flag: str) -> tuple[str, str]:
     """(name, diff base object). The diff base is a merge-base commit, or the empty tree."""
     given = os.environ.get("KIT_CHECK_BASE", "").strip()
     if given and resolve(given) is None:
         raise Stop(3, f"{TAG} git rev-parse --verify {given}^{{commit}}: KIT_CHECK_BASE names no commit",
                    "next: unset KIT_CHECK_BASE or name a commit that exists in this clone")
+    end = check_head()
+    if end and not given:
+        raise Stop(3, f"{TAG} KIT_CHECK_HEAD needs KIT_CHECK_BASE", "next: set KIT_CHECK_BASE, or unset KIT_CHECK_HEAD")
     head = resolve("HEAD")
     if head is None:  # unborn HEAD: every path of the tree is new
         return "empty-tree", empty_tree()
     if given:
-        return ("base" if HEX.match(given) else given), merge_base(given)
+        return ("base" if HEX.match(given) else given), merge_base(given, end or "HEAD")
     branch = git_try("symbolic-ref", "--quiet", "--short", "HEAD")  # None: a detached HEAD skips the upstream step
     if branch:
         remote = git_try("config", "--get", f"branch.{branch}.remote")
@@ -433,8 +451,8 @@ def empty_tree() -> str:
     return proc.stdout.decode().strip()
 
 
-def merge_base(ref: str) -> str:
-    proc = run_git("merge-base", "HEAD", ref)
+def merge_base(ref: str, end: str = "HEAD") -> str:
+    proc = run_git("merge-base", end, ref)
     if proc.returncode != 0 or not proc.stdout.strip():
         shallow = git_try("rev-parse", "--is-shallow-repository") == "true"
         reason = first_line(proc.stderr, proc.returncode) if proc.stderr.strip() else "no common ancestor"
@@ -446,10 +464,12 @@ def merge_base(ref: str) -> str:
 def changed_set(diff_base: str) -> tuple[list[str], set[str], set[str]]:
     """(changed paths, the untracked ones among them, the deleted ones): the diff is tracked and staged paths, ls-files -o
     the rest. Deleted is git's word (gone from the index against the base, the old side of a rename too), never
-    path.exists: after `git rm --cached` the file is still on disk (FB-656)."""
-    paths = nul_list("diff", "--name-only", "-z", "--no-renames", diff_base, "--")
-    deleted = set(nul_list("diff", "--name-only", "-z", "--no-renames", "--diff-filter=D", diff_base, "--"))
-    untracked = set(nul_list("ls-files", "-o", "--exclude-standard", "-z"))
+    path.exists: after `git rm --cached` the file is still on disk (FB-656). FB-882: with KIT_CHECK_HEAD the range is
+    `diff_base` to that commit and the tree is not read: no untracked paths."""
+    end = [e] if (e := check_head()) else []
+    paths = nul_list("diff", "--name-only", "-z", "--no-renames", diff_base, *end, "--")
+    deleted = set(nul_list("diff", "--name-only", "-z", "--no-renames", "--diff-filter=D", diff_base, *end, "--"))
+    untracked = set() if end else set(nul_list("ls-files", "-o", "--exclude-standard", "-z"))
     return sorted(set(paths) | untracked), untracked, deleted - untracked
 
 

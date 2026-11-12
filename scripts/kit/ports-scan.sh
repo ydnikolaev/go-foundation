@@ -13,7 +13,9 @@
 
 files=()
 for f in compose*.y*ml docker-compose*.y*ml deploy/compose*.y*ml deploy/docker-compose*.y*ml; do
-  if [ -f "$f" ]; then files+=("$f"); fi
+  if [ -f "$f" ]; then
+    files+=("$f")
+  fi
 done
 if [ "${#files[@]}" -eq 0 ]; then
   echo "ports-scan: no compose file at the root or under deploy/; nothing to scan"

@@ -6,7 +6,7 @@ drives time by hand instead of sleeping. Standard library only.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/clock@v0.1.0
+go get github.com/ydnikolaev/go-foundation/units/clock@v0.1.1
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.
@@ -24,6 +24,59 @@ go-foundation is public: no GOPRIVATE, no token, no vendoring.
 ## Configure
 
 Nothing to configure. `NewFake(start)` takes the first time the fake reports.
+
+## API
+
+<!-- api: devkit foundation api; do not edit -->
+```go
+TYPES
+type Clock interface {
+	// Now is the current time.
+	Now() time.Time
+	// After returns a channel that receives the clock's time once d has passed (at once for d <= 0).
+	After(d time.Duration) <-chan time.Time
+}
+type Fake struct {
+	// Has unexported fields.
+}
+func NewFake(start time.Time) *Fake
+func (f *Fake) Advance(d time.Duration)
+func (f *Fake) After(d time.Duration) <-chan time.Time
+func (f *Fake) Now() time.Time
+func (f *Fake) Set(t time.Time)
+func (f *Fake) Waiters() int
+type Nower interface {
+	// Now is the current time.
+	Now() time.Time
+}
+type Real struct{}
+func (Real) After(d time.Duration) <-chan time.Time
+func (Real) Now() time.Time
+```
+
+## Example
+
+Test code that waits, without sleeping (compiled and run as a test of this snippet):
+
+```go
+// waitThenStamp is the code under test: it takes a Clock instead of calling time.After.
+func waitThenStamp(c clock.Clock, d time.Duration) time.Time {
+	<-c.After(d)
+	return c.Now()
+}
+
+func main() {
+	fake := clock.NewFake(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC))
+	done := make(chan time.Time)
+	go func() { done <- waitThenStamp(fake, time.Minute) }()
+
+	for fake.Waiters() < 1 { // wait until the code under test has armed its timer
+		runtime.Gosched()
+	}
+	fake.Advance(time.Minute) // fires the timer without sleeping
+	fmt.Println(<-done)       // 2026-01-01 00:01:00 +0000 UTC
+}
+```
 
 ## Extension points
 

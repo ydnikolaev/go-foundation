@@ -99,6 +99,152 @@ are read, nothing else and nothing inside a group:
 | `key` | `Event.Task`, only on records whose message starts with `cron: ` |
 | `error`, `panic` | `Event.ErrorClass`: the Go type of the root cause, never its text |
 
+## API
+
+<!-- api: devkit foundation api; do not edit -->
+```go
+CONSTANTS
+const (
+	KindHTTP    = "http"    // an API request answered 5xx
+	KindPanic   = "panic"   // a recovered handler panic
+	KindCron    = "cron"    // a scheduled task failed or ran past its deadline
+	KindJob     = "job"     // a background job died
+	KindWorker  = "worker"  // the jobs worker stopped
+	KindBilling = "billing" // a payment callback or a charge went wrong
+	KindWeb     = "web"     // a crash the web app reported
+	KindError   = "error"   // any other Error-level record
+)
+const (
+	// DefaultPrefix opens a message when neither the event nor the Alerter's Config names a prefix.
+	DefaultPrefix = "alert: "
+)
+const (
+	DefaultQueueSize       = 256
+	DefaultWindow          = 10 * time.Minute
+	DefaultMaxFingerprints = 1024
+	DefaultWebBudget       = 20
+	DefaultPace            = 3 * time.Second
+	DefaultSendTimeout     = 10 * time.Second
+)
+const DefaultTelegramURL = "https://api.telegram.org"
+TYPES
+type Alerter struct {
+	// Has unexported fields.
+}
+func New(n Notifier, cfg Config) *Alerter
+func (a *Alerter) Close(ctx context.Context) error
+func (a *Alerter) Stats() Stats
+func (a *Alerter) Submit(ev Event)
+type Clock interface {
+	Now() time.Time
+	AfterFunc(d time.Duration, f func()) Timer
+}
+type Config struct {
+	QueueSize       int           // pending events; more are dropped and counted
+	Window          time.Duration // dedup window per fingerprint
+	MaxFingerprints int           // open windows kept; the oldest is evicted past this
+	WebBudget       int           // KindWeb events sent per window across all clients; the rest fold into one count
+	Pace            time.Duration // minimum gap between two sends
+	SendTimeout     time.Duration // per delivery attempt
+	Colour  string // the deployment colour, stamped on every event that carries none
+	Release string // the build version, stamped on every event that carries none
+	Prefix  string // the opening of every message, up to the kind, separator included; stamped on events with none; "" = DefaultPrefix
+	// Log receives the Alerter's own failures. It must be the base logger, not the one fronted by Handler, or a
+	// failing notifier would alert about itself. nil discards them.
+	Log *slog.Logger
+	Clock Clock                                            // nil = the wall clock
+	Sleep func(ctx context.Context, d time.Duration) error // nil = a timer; tests inject an instant one
+}
+type Event struct {
+	Kind        string // one of the Kind constants
+	Message     string // a constant, developer-written description (the log message)
+	Route       string // the route template: a mux pattern or a page route, never a concrete path or a query
+	ErrorClass  string // the Go type of the root cause, or the web error class; never the error text
+	Status      int    // HTTP status, 0 when none
+	Code        string // the application's error code
+	Task        string // the job kind or the cron key
+	Provider    string // the payment provider
+	Fingerprint string // a client-computed key (web events), hex
+	RequestID   string
+	Colour      string // the deployment colour; the Alerter stamps it
+	Release     string // the build version (a web event carries the web build); the Alerter stamps it when empty
+	Prefix      string // the opening of the message, up to the kind, separator included; the Alerter stamps it when empty
+	Count       int    // how many times this fingerprint happened in the window; 0 reads as 1
+}
+func (e Event) Key() string
+func (e Event) Text() string
+type Handler struct {
+	// Has unexported fields.
+}
+func NewHandler(base slog.Handler, sink Sink) *Handler
+func (h *Handler) Enabled(ctx context.Context, l slog.Level) bool
+func (h *Handler) Handle(ctx context.Context, r slog.Record) error
+func (h *Handler) WithAttrs(attrs []slog.Attr) slog.Handler
+func (h *Handler) WithGroup(name string) slog.Handler
+type Log struct {
+	// Has unexported fields.
+}
+func NewLog(l *slog.Logger) *Log
+func (n *Log) Notify(ctx context.Context, ev Event) error
+type NopSink struct{}
+func (NopSink) Submit(Event)
+type Notifier interface {
+	Notify(ctx context.Context, ev Event) error
+}
+type RateLimitError struct{ RetryAfter time.Duration }
+func (e *RateLimitError) Error() string
+type Sink interface {
+	Submit(ev Event)
+}
+type Stats struct {
+	Sent    int64 // events handed to the notifier successfully
+	Dropped int64 // events lost to a full queue or a closed Alerter, or abandoned on shutdown
+	Failed  int64 // events the notifier could not deliver (after the one 429 retry)
+}
+type Telegram struct {
+	// Has unexported fields.
+}
+func NewTelegram(cfg TelegramConfig) (*Telegram, error)
+func (t *Telegram) Notify(ctx context.Context, ev Event) error
+type TelegramConfig struct {
+	Token  string // the bot token; the caller reads it from its own configuration
+	ChatID string // the chat the alerts go to
+	BaseURL string       // nil-value = DefaultTelegramURL; tests point it at a fake server
+	Client  *http.Client // nil = a client with a 15 s timeout
+}
+type Timer interface{ Stop() bool }
+```
+
+## Example
+
+An Alerter that sends through Telegram, fed by a slog tee (this is `Example_telegram`, compiled by the unit's tests, not run):
+
+```go
+	notifier, err := alert.NewTelegram(alert.TelegramConfig{
+		Token:  os.Getenv("ALERT_TELEGRAM_TOKEN"),
+		ChatID: os.Getenv("ALERT_TELEGRAM_CHAT_ID"),
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	base := slog.NewJSONHandler(os.Stderr, nil)
+	alerter := alert.New(notifier, alert.Config{
+		Prefix:  "myservice alert: ", // the separator space is yours
+		Colour:  "blue",
+		Release: "v1.2.3",
+		Log:     slog.New(base), // the base logger, never the one fronted by the tee
+	})
+	logger := slog.New(alert.NewHandler(base, alerter))
+
+	logger.Error("request failed", "route", "GET /v1/items", "status", 500, "code", "internal")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := alerter.Close(ctx); err != nil {
+		log.Print(err)
+	}
+```
+
 ## Extension points
 
 - `Notifier` (`Notify(ctx, Event) error`): your own adapter. Return `*alert.RateLimitError` to have the sender wait

@@ -3,4 +3,5 @@
 **/*.go kit-go-test
 **/go.mod kit-go-test
 **/go.sum kit-go-test
+.golangci.yml kit-go-lint
 @test-gate kit-go-test

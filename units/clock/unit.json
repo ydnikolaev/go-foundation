@@ -4,5 +4,24 @@
   "kind": "primitive",
   "stability": "experimental",
   "summary": "The time seam: a Clock (Now, After) and a Now-only Nower, the wall-clock Real, and a hand-driven Fake whose timers fire on Advance and Set.",
-  "pairs": []
+  "pairs": [],
+  "keywords": [
+    "fake clock",
+    "mock time",
+    "deterministic test",
+    "virtual time",
+    "sleep in test",
+    "time.after",
+    "time.now",
+    "timer"
+  ],
+  "use_when": [
+    "a test must control time instead of sleeping",
+    "code reads the current time or waits and must stay testable",
+    "a component needs a swappable time source (real in production, fake in tests)"
+  ],
+  "not_for": [
+    "measuring elapsed time in production: use time.Since",
+    "scheduling recurring jobs or cron: use a scheduler library, the unit only fakes Now and After"
+  ]
 }

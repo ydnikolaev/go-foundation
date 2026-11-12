@@ -14,10 +14,18 @@
 #             library, an external module) prints nothing; a package importing itself prints nothing
 #   -e        a package that does not load (a missing go.sum entry, an import nobody provides) is still listed with the
 #             imports its files name, so the lister fails only for a failed `go` call, never for a build problem
-# Known gaps: build-tagged files are read only under the tags in GOFLAGS (make exports them; run by hand, go's defaults
-#             apply, as do its GOCACHE and GOMODCACHE); `go list` reads every .go file of a package dir, an ignored one
-#             included (unlike the Python and TS listers, which read listed files); a package named only by a //go:embed or
-#             cgo include is not an import; a go.mod under testdata/ or vendor/ is not a module here.
+#   tags      FB-685: a file under `//go:build <tag>` is invisible to a plain `go list`, so a second listing runs with the
+#             tags those files name: per module, `go list` gives each package's IgnoredGoFiles, the first `//go:build` line
+#             of each is read, and its plain identifiers become `-tags` (a term under `!`, a GOOS or GOARCH name, `ignore`,
+#             cgo, unix, the compiler names and go1.N are skipped); a tag already in GOFLAGS stays in the list. The two
+#             listings are merged, so a file selected by the absence of a tag is still read
+# Known gaps: the GOFLAGS tags and the tags found in ignored files are the only ones read (run by hand, go's defaults apply,
+#             as do its GOCACHE and GOMODCACHE); a `// +build` line without a `//go:build` one is not read; a tag under a
+#             nested `!( )` is turned on like a plain one (harmless: the plain listing is merged); all found tags are on at
+#             once, so two files that exclude each other by tag are not both read in one listing (the plain listing keeps
+#             the default side); `go list` reads every .go file of a package
+#             dir (unlike the Python and TS listers, which read listed files); a package named only by a //go:embed or cgo
+#             include is not an import; a go.mod under testdata/ or vendor/ is not a module here.
 set -uo pipefail
 set -f
 
@@ -56,16 +64,69 @@ while IFS= read -r file; do
   dirs+=("$dir")
 done < "$gomods"
 
-# pass 2: the packages of every module and what they import
+# FB-685: the tags a file's first //go:build line names; the skip set holds what `go build` fills in itself
+# shellcheck disable=SC2016  # an awk program: its $0 is awk's, not the shell's
+tagawk='
+FNR == 1 { done = 0 }
+done { next }
+/^[[:space:]]*package[[:space:]]/ { done = 1; next }
+/^\/\/go:build[[:space:]]/ {
+  done = 1
+  line = substr($0, 11)
+  gsub(/![[:space:]]*\([^()]*\)/, " ", line)
+  gsub(/![[:space:]]*[A-Za-z0-9_.]+/, " ", line)
+  n = split(line, tok, /[^A-Za-z0-9_.]+/)
+  for (i = 1; i <= n; i++) {
+    t = tok[i]
+    if (t == "" || (t in skip) || t ~ /^go1\./ || t ~ /^goexperiment\./) continue
+    print t
+  }
+}'
+skiptags="ignore cgo unix gc gccgo race msan asan boringcrypto aix android darwin dragonfly freebsd hurd illumos ios js linux nacl netbsd openbsd plan9 solaris wasip1 windows zos 386 amd64 amd64p32 arm armbe arm64 arm64be loong64 mips mipsle mips64 mips64le mips64p32 mips64p32le ppc ppc64 ppc64le riscv riscv64 s390 s390x sparc sparc64 wasm"
+
+# the tags GOFLAGS already carries (-tags=a,b): a -tags on the command line replaces them, so they are passed on again
+goflags_tags=""
+for flag in ${GOFLAGS:-}; do
+  case "$flag" in
+    -tags=*|--tags=*) goflags_tags="${goflags_tags:+$goflags_tags,}${flag#*=}" ;;
+  esac
+done
+
+# pass 2: the packages of every module and what they import: listed plain, then again under the tags of the ignored files
 edges="$tmp/edges"
 : > "$edges"
+fmt='{{.Dir}}	{{join .Imports " "}} {{join .TestImports " "}} {{join .XTestImports " "}}'
 for dir in ${dirs[@]+"${dirs[@]}"}; do
-  if ! (cd "$dir" && GOWORK=off go list -e \
-      -f '{{.Dir}}	{{join .Imports " "}} {{join .TestImports " "}} {{join .XTestImports " "}}' ./... \
-      > "$tmp/list" 2>"$tmp/err"); then
+  if ! (cd "$dir" && GOWORK=off go list -e -f "$fmt" ./... > "$tmp/lists" 2>"$tmp/err"); then
     echo "modules-go: go list failed in $dir:" >&2
     head -n 5 "$tmp/err" >&2
     exit 1
+  fi
+  if ! (cd "$dir" && GOWORK=off go list -e -f '{{.Dir}}	{{join .IgnoredGoFiles " "}}' ./... > "$tmp/ignored" 2>"$tmp/err"); then
+    echo "modules-go: go list failed in $dir:" >&2
+    head -n 5 "$tmp/err" >&2
+    exit 1
+  fi
+  files=()
+  while IFS=$'\t' read -r pkgdir names; do
+    for name in $names; do
+      files+=("$pkgdir/$name")
+    done
+  done < "$tmp/ignored"
+  tags=""
+  if [ "${#files[@]}" -gt 0 ]; then
+    awk -v skiplist="$skiptags" 'BEGIN { n = split(skiplist, s, " "); for (i = 1; i <= n; i++) skip[s[i]] = 1 }'"$tagawk" \
+      "${files[@]}" 2>/dev/null | sort -u > "$tmp/tags"
+    tags="$(paste -sd, - < "$tmp/tags")"
+  fi
+  if [ -n "$tags" ]; then
+    if ! (cd "$dir" && GOWORK=off go list -e -tags "${goflags_tags:+$goflags_tags,}$tags" -f "$fmt" ./... \
+        > "$tmp/list" 2>"$tmp/err"); then
+      echo "modules-go: go list failed in $dir:" >&2
+      head -n 5 "$tmp/err" >&2
+      exit 1
+    fi
+    cat "$tmp/list" >> "$tmp/lists"
   fi
   awk -F'\t' -v p1="$root_logical" -v p2="$root_physical" '
     NR == FNR { mp[$1] = $2; next }
@@ -91,7 +152,7 @@ for dir in ${dirs[@]+"${dirs[@]}"}; do
         if (tgt == "") tgt = "."
         if (tgt != rel) print rel "/ " tgt "/"
       }
-    }' "$map" "$tmp/list" >> "$edges"
+    }' "$map" "$tmp/lists" >> "$edges"
 done
 
 sort -u "$edges"

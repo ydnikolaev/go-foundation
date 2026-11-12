@@ -62,13 +62,14 @@ kit-go-lint: ## golangci-lint v2 baseline (.golangci.yml: errorlint, wrapcheck, 
 	case "$$("$$bin" --version 2>&1)" in *"version 2."*) ;; *) \
 		echo "kit-go-lint: $$bin is not golangci-lint v2 (.golangci.yml is version 2; pin: config/versions.toml [template] in devkit): upgrade it" >&2; exit 2 ;; esac; \
 	[ -f .golangci.yml ] || { echo "kit-go-lint: .golangci.yml is missing: run devkit update --apply" >&2; exit 2; }; \
+	cfg="$(CURDIR)/.golangci.yml"; \
 	rc=0; \
 	for gomod in $$mods; do \
 		[ -f "$$gomod" ] || continue; \
 		dir="$$(dirname "$$gomod")"; \
 		if [ "$$dir" != . ]; then case "/$$dir/" in */testdata/*|*/vendor/*|*/_*|*/.?*) continue ;; esac; fi; \
 		echo "kit-go-lint: $$dir"; \
-		(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$(CURDIR)/.golangci.yml" ./...) || rc=1; \
+		(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$$cfg" ./...) || rc=1; \
 	done; \
 	exit $$rc
 

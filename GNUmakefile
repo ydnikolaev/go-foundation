@@ -6,6 +6,7 @@
 # Makefile: it inherits its parent's decision. Sizes (queue_cores, a goal=cores map over it; the largest goal asked
 # wins) and the extra heavy names come from .devkit/config.env (needs make >= 4.2); a command-line or environment value
 # wins; `KIT_LIGHT_TARGETS` takes goals out of the heavy class (a name also heavy stays heavy). No `$(shell)`. Your rules go in Makefile, never here.
+# A project's own docker goals are the `docker_targets` answer, never a Makefile variable: this shim classes before Makefile is read (FB-733).
 # Without the host queue (no heavy_run.py) it is inert: nothing queued, nothing exported. `kit_conf` is the one values
 # file the body reads: .devkit/config.env here, config/ops.env in a copy made by /devkit:apply-ops.
 kit_conf := .devkit/config.env

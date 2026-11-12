@@ -4,5 +4,26 @@
   "stack": "go",
   "summary": "A CLI's embedded agent docs: manifest and topics, install with a provenance stamp and drift check, the verified agent-runtime surfaces and link, the context-file pointer block, and a staleness check.",
   "stability": "experimental",
-  "pairs": []
+  "pairs": [],
+  "keywords": [
+    "embedded docs",
+    "agent docs",
+    "skill install",
+    "provenance",
+    "docs drift",
+    "agents.md",
+    "claude.md",
+    "pointer block",
+    "symlink skills"
+  ],
+  "use_when": [
+    "a CLI must ship its agent documentation inside the binary and serve it with a docs verb",
+    "a consuming repository needs the docs installed under a provenance stamp and linked into each agent runtime",
+    "a doctor row must say that the installed docs drifted from the binary"
+  ],
+  "not_for": [
+    "user-facing help text or man pages: use the CLI framework's own help",
+    "release obligations for a consuming repository: use the adoption unit",
+    "hosting documentation for people: use a docs site generator"
+  ]
 }
