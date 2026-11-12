@@ -1,5 +1,6 @@
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
 # The kit's own files: covered by CHECK_EXTRA (kit-check), nothing extra to select. Read after config/check-map.
+# FB-886: .a2a/config.yaml is written by the a2a space join; the kit gates cover it.
 .devkit/** -
 mk/kit-*.mk -
 scripts/kit/** -
@@ -7,3 +8,4 @@ scripts/kit/** -
 .copier-answers.devkit.yml -
 .devkit-sandbox -
 GNUmakefile -
+.a2a/** -

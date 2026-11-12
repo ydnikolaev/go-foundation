@@ -15,7 +15,10 @@
 #          label dev.$KIT_PROJECT.shared=true (set by the project on a service worktrees share by design, in its own
 #          compose file; no knob here) is not a survivor: the gate prints `kit-leak: shared container <name> kept` for
 #          each one that would otherwise count, and kills nothing. Another project's key, or a value other than true,
-#          does not exempt (FB-580).
+#          does not exempt (FB-580). A candidate whose label com.docker.compose.project.working_dir is set and is not this
+#          checkout's top (git rev-parse --show-toplevel) or under it, both resolved with pwd -P, belongs to another checkout:
+#          it is not counted, and one line `kit-leak: <n> container(s) of other checkouts not counted` says so. No compose
+#          label, or a git that cannot name the top: the candidate counts (fail closed).
 # Exit:    0 no survivor (`kit-leak: ok`); 1 at least one survivor; 2 the gate itself could not read the process table.
 # Needs:   bash 3.2, a POSIX/BSD awk, ps with -o pid,ppid,pgid,stat,etime,command (macOS and Linux procps).
 
@@ -175,9 +178,23 @@ else
   if run "$timeout_s" "$tmp/shared.out" docker ps -q --filter "label=dev.$proj.shared=true"; then
     cat "$tmp/shared.out" >"$tmp/shared.txt"
   fi
+  # this checkout's top, both resolved; empty when git cannot say (the gate then counts every candidate: fail closed)
+  top="$(git rev-parse --show-toplevel 2>/dev/null)" && top="$(cd "$top" 2>/dev/null && pwd -P)" || top=""
+  top="${top%/}"
+  : >"$tmp/other.txt"
   while IFS= read -r id; do
-    if run "$timeout_s" "$tmp/insp.out" docker inspect -f '{{.Created}} {{.Name}}' "$id"; then
+    if run "$timeout_s" "$tmp/insp.out" docker inspect -f '{{.Created}} {{.Name}} {{index .Config.Labels "com.docker.compose.project.working_dir"}}' "$id"; then
       awk -v id="$id" -v start="$start" -v now="$cnow" -v cut="$cut_to" "$to_epoch" "$tmp/insp.out" >"$tmp/one.txt"
+      # the optional trailing field is the compose working_dir (it may hold spaces): empty means no compose label
+      wd="$(sed -n '1s/^[^ ]* [^ ]* \{0,1\}//p' "$tmp/insp.out")"
+      if [ -n "$wd" ] && [ -n "$top" ] && [ -s "$tmp/one.txt" ]; then
+        rwd="$(cd "$wd" 2>/dev/null && pwd -P)" || rwd="$wd"
+        rwd="${rwd%/}"
+        case "$rwd/" in
+          "$top"/*) ;;
+          *) cat "$tmp/one.txt" >>"$tmp/other.txt"; continue ;;
+        esac
+      fi
       if grep -q -x -F "$id" "$tmp/shared.txt"; then
         # FB-603: the awk clamps the age at 0; the optional '-' is a second guard
         sed 's/^container [^ ]*  age -\{0,1\}[0-9]*s  \(.*\)$/kit-leak: shared container \1 kept/' "$tmp/one.txt" >>"$tmp/kept.txt"
@@ -191,6 +208,9 @@ fi
 # ---- verdict ----
 [ -n "$skip_note" ] && echo "kit-leak: $skip_note"
 [ -s "$tmp/kept.txt" ] && cat "$tmp/kept.txt"
+if [ -s "$tmp/other.txt" ]; then
+  echo "kit-leak: $(wc -l <"$tmp/other.txt" | tr -d ' ') container(s) of other checkouts not counted"
+fi
 count="$(wc -l <"$survivors" | tr -d ' ')"
 if [ "$count" -eq 0 ]; then
   echo "kit-leak: ok"

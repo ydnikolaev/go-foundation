@@ -13,10 +13,15 @@
     "sleep in test",
     "time.after",
     "time.now",
-    "timer"
+    "timer",
+    "unit test",
+    "instant tests",
+    "no sleep",
+    "delay"
   ],
   "use_when": [
     "a test must control time instead of sleeping",
+    "a unit test must run instantly: advance time by hand instead of pausing for a delay to pass",
     "code reads the current time or waits and must stay testable",
     "a component needs a swappable time source (real in production, fake in tests)"
   ],

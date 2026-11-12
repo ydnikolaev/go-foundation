@@ -1,0 +1,12 @@
+expect	query
+go/clock	I need to fake time in a test
+go/clock	make a unit test finish instantly instead of pausing for a delay to pass
+go/alert	send a Telegram notification when my service logs an error
+go/alert	get a chat message when my service crashes or returns a server failure, without a flood of repeats
+go/agentdocs	have my CLI print help pages for an AI coding agent from its own binary
+go/agentdocs	ship markdown guides for AI assistants inside my command-line program and copy them into the project
+go/adoption	make my CLI warn which release-note obligations the repository still owes
+go/adoption	remind users of my command-line program which upgrade chores they still owe after installing a new build
+none	parse a CSV file into structs
+none	render a PDF invoice from an HTML template
+none	rate limit incoming HTTP requests per IP address

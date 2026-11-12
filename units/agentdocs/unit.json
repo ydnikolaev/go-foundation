@@ -14,12 +14,15 @@
     "agents.md",
     "claude.md",
     "pointer block",
-    "symlink skills"
+    "symlink skills",
+    "markdown guides",
+    "ai assistants"
   ],
   "use_when": [
     "a CLI must ship its agent documentation inside the binary and serve it with a docs verb",
     "a consuming repository needs the docs installed under a provenance stamp and linked into each agent runtime",
-    "a doctor row must say that the installed docs drifted from the binary"
+    "a doctor row must say that the installed docs drifted from the binary",
+    "a CLI must ship markdown guides for AI assistants inside its binary and copy them into the project"
   ],
   "not_for": [
     "user-facing help text or man pages: use the CLI framework's own help",

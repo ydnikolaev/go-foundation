@@ -2,7 +2,7 @@
   "id": "adoption",
   "kind": "module",
   "stack": "go",
-  "summary": "What a tool's releases still ask of a consuming repository: release-note obligations, a committed per-repo clock, detects, the per-verb notice and the clock-file git probe.",
+  "summary": "What a tool's releases ask of a consuming repository: release-note obligations, a committed per-repo clock, detects, the per-verb notice and the git probe that checks the clock is tracked.",
   "stability": "experimental",
   "pairs": [],
   "keywords": [
@@ -10,7 +10,8 @@
     "upgrade obligations",
     "pending migrations",
     "adapted through",
-    "clock file",
+    "committed clock",
+    "upgrade chores",
     "detect command",
     "update notice",
     "consumer repo"
@@ -18,7 +19,8 @@
   "use_when": [
     "a CLI must tell the repository that uses it what the new release still asks of it",
     "a record verb must refuse while a detect says an obligation is still owed",
-    "a doctor row must flag a clock file that is untracked or gitignored"
+    "a doctor row must flag a clock that is untracked or gitignored",
+    "a command-line program must remind its users which upgrade chores they still owe after installing a new build"
   ],
   "not_for": [
     "writing the release notes themselves: this unit reads them, the schema validator is the tool's own",

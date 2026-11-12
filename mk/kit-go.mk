@@ -32,11 +32,15 @@ $(KIT_CACHE_STAMP):
 CHECK_EXTRA += cache-trim-auto
 CHECK_FULL += cache-trim-test
 
-.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test kit-go-lint kit-go-grep
+.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test kit-go-lint kit-go-grep kit-go-shape
 
 # FB-725 (R-214): grep gates in every `make check`: no //nolint and no time.Sleep in a _test.go (code keeps the explained //nolint:<linter> // <why>, nolintlint polices it). Whole-tree like
 # the lint above, for the same reason: a rule that only fires on touched files lets old breaches hide.
 CHECK_EXTRA += kit-go-grep
+
+# FB-878/FB-879: the code-shape gate (standards/code-shape.md rules 1 and 5), whole-tree and cheap (a line count, no Go toolchain). Advisory
+# until the repo writes config/go-shape.ceiling or sets a KIT_GO_* bound in .devkit/config.env, so an update never turns `make check` red.
+CHECK_EXTRA += kit-go-shape
 
 # FB-724 (R-214): the lint baseline, .golangci.yml (managed, errorlint + wrapcheck + nolintlint), in every `make check`.
 # Whole-tree on purpose, not selected by changed paths: golangci-lint is cached (GOLANGCI_LINT_CACHE) and a rule that
@@ -75,6 +79,9 @@ kit-go-lint: ## golangci-lint v2 baseline (.golangci.yml: errorlint, wrapcheck, 
 
 kit-go-grep: ## Refuse //nolint and time.Sleep in _test.go files (whole tree)
 	@bash scripts/kit/go-test-grep.sh
+
+kit-go-shape: ## Code-shape gate: an entry package over 300 code lines, any package over 2000 (advisory until config/go-shape.ceiling exists)
+	@bash scripts/kit/go-shape.sh
 
 cache-trim: ## Trim Go caches now (age + size caps)
 	@bash scripts/kit/cache-trim.sh --force

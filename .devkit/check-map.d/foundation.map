@@ -2,6 +2,15 @@
 # The foundation module's unit files: kit-foundation-check runs in every `make check`, so no path under them needs a target of its own.
 units/*/unit.json -
 units/*/releasenotes/** -
+eval/queries.tsv -
 LICENSE -
 go.work -
 go.work.sum -
+package.json -
+package-lock.json -
+tsconfig.base.json -
+units/*/package.json -
+units/*/tsconfig.build.json -
+units/*/.gitignore -
+units/*/src/** -
+units/*/pack/* -
