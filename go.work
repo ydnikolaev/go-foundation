@@ -5,4 +5,5 @@ use (
 	./units/agentdocs
 	./units/alert
 	./units/clock
+	./units/cron
 )

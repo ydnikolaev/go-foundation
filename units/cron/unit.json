@@ -1,0 +1,36 @@
+{
+  "id": "cron",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "An in-process scheduled-task runner: tasks every interval or daily at HH:MM in a chosen zone, with an injected Clock, busy-slot skip, permit limit, panic recovery and a bounded Stop.",
+  "pairs": [],
+  "keywords": [
+    "cron",
+    "scheduler",
+    "scheduled task",
+    "background task",
+    "periodic job",
+    "recurring job",
+    "run every n minutes",
+    "daily job",
+    "fixed time of day",
+    "interval job",
+    "job runner",
+    "nightly cleanup",
+    "maintenance job",
+    "no overlap",
+    "long-running program"
+  ],
+  "use_when": [
+    "a job must run every N minutes or hours inside a long-running service",
+    "a task, such as a nightly cleanup, must run once a day at a fixed time of day (03:30, say), read in a chosen time zone",
+    "a scheduled background task must not pile up: it skips a slot while its previous pass is still going, survives a panic and stops within a bound at shutdown",
+    "schedule code must be tested by driving a fake clock instead of waiting"
+  ],
+  "not_for": [
+    "scheduling across replicas or distributed locking: it is in-process only, so two replicas both run a task unless the task claims its slot itself",
+    "cron expressions or calendars: only a fixed interval and a daily HH:MM exist",
+    "a durable job queue or retries with backoff: a slot missed while the process is down is not replayed"
+  ]
+}

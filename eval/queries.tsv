@@ -7,6 +7,8 @@ go/agentdocs	have my CLI print help pages for an AI coding agent from its own bi
 go/agentdocs	ship markdown guides for AI assistants inside my command-line program and copy them into the project
 go/adoption	make my CLI warn which release-note obligations the repository still owes
 go/adoption	remind users of my command-line program which upgrade chores they still owe after installing a new build
+go/cron	run a job every 10 minutes inside my Go service
+go/cron	make my long-running program do a nightly cleanup at 03:30 and not pile up when the last pass is still going
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

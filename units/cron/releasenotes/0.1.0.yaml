@@ -1,0 +1,36 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: unreleased
+headline: First release, the in-process scheduled-task runner taken from a consumer; the Daily zone is now a Runner option
+changes:
+  - id: CRON-0100-1
+    kind: feat
+    impact: high
+    subject: The scheduled-task runner as a shared unit
+    detail: >-
+      Tasks on a fixed interval (Every) or a daily HH:MM (Daily), driven by an injected Clock and slog logger, with a
+      busy-slot skip, a process-wide permit limit, panic recovery, a bounded Stop and a leak halt, taken from a consumer
+      at its own tested state.
+    affects:
+      - cron.Runner
+      - cron.Task
+      - cron.Daily
+      - cron.Clock
+      - cron.ErrHeld
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.
+  - id: CRON-0100-2
+    kind: change
+    impact: high
+    subject: The Daily zone is a Runner option
+    detail: >-
+      At the source Daily was fixed to one exported zone variable of the consumer's country. In this unit the zone is
+      WithLocation, defaulting to time.UTC, and the exported zone variable is gone. A consumer that needs its old zone
+      passes it to WithLocation (time.FixedZone needs no tzdata).
+    affects:
+      - cron.WithLocation
+      - cron.Daily
+    action:
+      scope: none
+      why: A first import has nothing to migrate; a consumer that took the old source passes its zone to WithLocation.
