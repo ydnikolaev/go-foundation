@@ -55,7 +55,7 @@ type Config struct {
 
 	Colour  string // the deployment colour, stamped on every event that carries none
 	Release string // the build version, stamped on every event that carries none
-	Prefix  string // the opening of every message, up to the kind, stamped on every event that carries none; "" = DefaultPrefix
+	Prefix  string // the opening of every message, up to the kind, separator included; stamped on events with none; "" = DefaultPrefix
 
 	// Log receives the Alerter's own failures. It must be the base logger, not the one fronted by Handler, or a
 	// failing notifier would alert about itself. nil discards them.

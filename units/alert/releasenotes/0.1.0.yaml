@@ -45,6 +45,7 @@ changes:
       Alerter's own send-failure log carries the notifier's error wrapped; the repo's lint requires it.
     affects:
       - alert.Handler.Handle
+      - alert.Alerter (the notifier error in its send-failure log is wrapped)
     action:
       scope: none
       why: A caller that compared the returned error with == must use errors.Is.

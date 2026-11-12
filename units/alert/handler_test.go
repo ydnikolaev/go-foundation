@@ -99,7 +99,7 @@ func TestTeeCronKeyOnlyOnCronRecords(t *testing.T) {
 	t.Parallel()
 	logger, c := teeLogger(io.Discard)
 	logger.Error("cron: task failed", "key", "jobs.reap", "error", errors.New("x"))
-	logger.Error("auth: brute force", "key", "login:1.2.3.4")
+	logger.Error("auth: repeated failure", "key", "login:1.2.3.4")
 	events := c.got()
 	if events[0].Task != "jobs.reap" {
 		t.Errorf("cron task = %q, want jobs.reap", events[0].Task)
@@ -110,7 +110,7 @@ func TestTeeCronKeyOnlyOnCronRecords(t *testing.T) {
 }
 
 // Every known Error site, with its exact message and attributes, becomes one Event of the right kind.
-func TestTeeCensusSites(t *testing.T) {
+func TestTeeKnownSites(t *testing.T) {
 	t.Parallel()
 	boom := errors.New("boom")
 	tests := []struct {
@@ -136,11 +136,11 @@ func TestTeeCensusSites(t *testing.T) {
 			func(e Event) bool { return e.Task == "mail.send" }, KindJob},
 		{"worker stopped", "jobs worker stopped", []any{"error", boom},
 			func(e Event) bool { return e.ErrorClass == "*errors.errorString" }, KindWorker},
-		{"bad signature", "billing: provider callback rejected", []any{"provider", "robokassa", "error", boom, "bad_signature", true},
-			func(e Event) bool { return e.Provider == "robokassa" }, KindBilling},
+		{"bad signature", "billing: provider callback rejected", []any{"provider", "acme-pay", "error", boom, "bad_signature", true},
+			func(e Event) bool { return e.Provider == "acme-pay" }, KindBilling},
 		{"amount mismatch", "billing: provider callback amount differs from the invoice",
-			[]any{"provider", "robokassa", "invoice_id", int64(9), "amount", int64(1000), "error", boom},
-			func(e Event) bool { return e.Provider == "robokassa" }, KindBilling},
+			[]any{"provider", "acme-pay", "invoice_id", int64(9), "amount", int64(1000), "error", boom},
+			func(e Event) bool { return e.Provider == "acme-pay" }, KindBilling},
 		{"dead charge", "billing: status unavailable for a dead charge, settling it failed", []any{"invoice_id", int64(9), "error", boom},
 			func(e Event) bool { return e.ErrorClass == "*errors.errorString" }, KindBilling},
 	}

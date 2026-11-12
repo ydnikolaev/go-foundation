@@ -44,7 +44,7 @@ type Event struct {
 	RequestID   string
 	Colour      string // the deployment colour; the Alerter stamps it
 	Release     string // the build version (a web event carries the web build); the Alerter stamps it when empty
-	Prefix      string // the opening of the message, up to the kind; the Alerter stamps it when empty, "alert: " if still empty
+	Prefix      string // the opening of the message, up to the kind, separator included; the Alerter stamps it when empty
 	Count       int    // how many times this fingerprint happened in the window; 0 reads as 1
 }
 
@@ -118,26 +118,24 @@ func (e Event) Text() string {
 	return truncate(strings.TrimRight(b.String(), "\n"), maxTextLen)
 }
 
-// clean makes a value safe for one line of plain text: control characters become spaces and the length is bounded.
+// clean makes a value safe for one line of plain text: every non-printable character becomes a space, and the
+// length is bounded.
 func clean(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == utf8.RuneError {
-			return ' '
-		}
-		return r
-	}, s)
-	return truncate(strings.TrimSpace(s), maxFieldLen)
+	return truncate(strings.TrimSpace(strings.Map(printable, s)), maxFieldLen)
+}
+
+// printable keeps what unicode.IsPrint accepts and turns every other rune into a space: controls, line and
+// paragraph separators, bidirectional overrides and other format characters cannot split or disguise a line.
+func printable(r rune) rune {
+	if r == utf8.RuneError || !unicode.IsPrint(r) {
+		return ' '
+	}
+	return r
 }
 
 // cleanPrefix is clean for the prefix, which keeps its trailing space: the prefix runs straight into the kind.
 func cleanPrefix(s string) string {
-	s = strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) || r == utf8.RuneError {
-			return ' '
-		}
-		return r
-	}, s)
-	return truncate(strings.TrimLeft(s, " "), maxFieldLen)
+	return truncate(strings.TrimLeft(strings.Map(printable, s), " "), maxFieldLen)
 }
 
 // truncate cuts s to at most n runes.
