@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.0
-released: unreleased
+released: 2026-11-13
 headline: First release, the in-process scheduled-task runner taken from a consumer; the Daily zone is now a Runner option
 changes:
   - id: CRON-0100-1
