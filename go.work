@@ -3,5 +3,6 @@ go 1.25.0
 use (
 	./units/adoption
 	./units/agentdocs
+	./units/alert
 	./units/clock
 )

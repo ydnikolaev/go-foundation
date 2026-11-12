@@ -1,0 +1,50 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-12
+headline: First release, the alert seam taken from a consumer; the message prefix is now a caller option
+changes:
+  - id: ALERT-0100-1
+    kind: feat
+    impact: high
+    subject: The alert seam as a shared unit
+    detail: >-
+      Event and its plain-text rendering, the Alerter (bounded queue, per-failure dedup window, pace, a budget for
+      anonymous web events), the Notifier port with Telegram and log adapters, and the slog Handler tee that builds an
+      Event from an attribute allowlist, taken from a consumer at its own tested state.
+    affects:
+      - alert.Event
+      - alert.Alerter
+      - alert.Notifier
+      - alert.Telegram
+      - alert.Log
+      - alert.Handler
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.
+  - id: ALERT-0100-2
+    kind: change
+    impact: normal
+    subject: The message prefix is a caller option
+    detail: >-
+      At the source the first line of every message began with a hard-coded, consumer-named prefix. In this unit it is
+      Config.Prefix, stamped on every event by the Alerter (or Event.Prefix when set), and DefaultPrefix ("alert: ")
+      when neither is set. A consumer that wants its old first line sets Config.Prefix to it.
+    affects:
+      - alert.Config.Prefix
+      - alert.Event.Prefix
+      - alert.DefaultPrefix
+    action:
+      scope: none
+      why: Set Config.Prefix on import to keep a custom first line; nothing in the consumer's repo can detect it.
+  - id: ALERT-0100-3
+    kind: change
+    impact: low
+    subject: Errors from the base handler and the notifier are wrapped
+    detail: >-
+      Handler.Handle returns the base handler's error wrapped (errors.Is and errors.As still see it), and the
+      Alerter's own send-failure log carries the notifier's error wrapped; the repo's lint requires it.
+    affects:
+      - alert.Handler.Handle
+    action:
+      scope: none
+      why: A caller that compared the returned error with == must use errors.Is.

@@ -1,0 +1,8 @@
+{
+  "id": "alert",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "An operational alert seam: events rendered to plain text, deduplicated and paced by an Alerter, sent through a Notifier (Telegram and log adapters), fed by a slog tee.",
+  "pairs": []
+}
