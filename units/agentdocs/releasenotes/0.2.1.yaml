@@ -1,0 +1,17 @@
+schema: foundation/releasenotes/v1
+version: 0.2.1
+released: 2026-11-13
+headline: The unit's card fields are filled so a caller's own words find it
+changes:
+  - id: AGENTDOCS-0201-1
+    kind: change
+    impact: low
+    subject: Card fields (keywords, use_when, not_for) and the README Example
+    detail: >-
+      The unit's card now carries the words a caller uses for the task, so `devkit foundation similar` finds it. No Go
+      code changed.
+    affects:
+      - units/agentdocs/unit.json
+    action:
+      scope: none
+      why: The change is in the unit's card only and owes the consumer no step.

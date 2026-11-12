@@ -6,7 +6,7 @@ drives time by hand instead of sleeping. Standard library only.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/clock@v0.1.1
+go get github.com/ydnikolaev/go-foundation/units/clock@v0.1.2
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.

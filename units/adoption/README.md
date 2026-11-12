@@ -7,7 +7,7 @@ other repository on the machine unadopted. This unit lets every verb ask at use.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/adoption@v0.3.0
+go get github.com/ydnikolaev/go-foundation/units/adoption@v0.3.1
 ```
 
 go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.
