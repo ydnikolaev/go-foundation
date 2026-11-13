@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.0
-released: unreleased
+released: 2026-11-13
 headline: First release, community moderation rules over a generic Target and a Store port, taken from a consumer
 changes:
   - id: MODERATION-0100-1
