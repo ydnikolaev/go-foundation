@@ -10,8 +10,11 @@
 # Docker:  only in a repo that renders the docker module (mk/kit-docker.mk; any other repo: no check, no note), and
 #          only when `docker` is on PATH and the daemon answers within KIT_LEAK_DOCKER_TIMEOUT seconds (default 5);
 #          otherwise one skip note and no failure. A survivor container is running, was created at or after make's
-#          start, and carries label devkit.project=$KIT_PROJECT or dev.$KIT_PROJECT.owner=$KIT_PROJECT (the docker
-#          standard's owner label). KIT_PROJECT: the environment, else .devkit/config.env. A container that also carries
+#          start, and carries both the owner label dev.$KIT_PROJECT.owner=$KIT_PROJECT (the docker standard's) and this
+#          run's id, label dev.$KIT_PROJECT.run=<make-pid> (FB-906: what the run starts gets it from $KIT_RUN_ID, which
+#          mk/kit-e2e.mk sets to make's pid (KIT_MAKE_PID, else $PPID); a container another session starts while make runs has no such label and is
+#          not counted, so a project's own target that starts a container passes `--label dev.<project>.run=$KIT_RUN_ID` or
+#          the gate cannot see it). KIT_PROJECT: the environment, else .devkit/config.env. A container that also carries
 #          label dev.$KIT_PROJECT.shared=true (set by the project on a service worktrees share by design, in its own
 #          compose file; no knob here) is not a survivor: the gate prints `kit-leak: shared container <name> kept` for
 #          each one that would otherwise count, and kills nothing. Another project's key, or a value other than true,
@@ -167,10 +170,12 @@ elif [ -z "$proj" ]; then
 elif ! run "$timeout_s" "$tmp/info.out" docker info; then
   skip_note="containers not checked: the docker daemon did not answer within ${timeout_s}s"
 else
+  # FB-906: only what this run started: the owner label AND this run's id (make's pid, label dev.$proj.run); two --filter
+  # label flags are ANDed. A container another session started during the run carries no such label.
   : >"$tmp/ids.txt"
-  for lbl in "devkit.project=$proj" "dev.$proj.owner=$proj"; do
-    if run "$timeout_s" "$tmp/ps.out" docker ps -q --filter "label=$lbl"; then cat "$tmp/ps.out" >>"$tmp/ids.txt"; fi
-  done
+  if run "$timeout_s" "$tmp/ps.out" docker ps -q --filter "label=dev.$proj.owner=$proj" --filter "label=dev.$proj.run=$mkpid"; then
+    cat "$tmp/ps.out" >>"$tmp/ids.txt"
+  fi
   cnow="$(date +%s)"
   sort -u "$tmp/ids.txt" >"$tmp/ids.sorted"
   # shared: the project's own opt-out label; when the lookup fails the list stays empty and the container counts (fail closed)
