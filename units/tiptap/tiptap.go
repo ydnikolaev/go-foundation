@@ -346,7 +346,7 @@ func compile(pattern string) (*regexp.Regexp, error) {
 	}
 	re, err := regexp.Compile(pattern)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("compile pattern: %w", err)
 	}
 	actual, _ := patterns.LoadOrStore(pattern, re)
 	return actual.(*regexp.Regexp), nil

@@ -145,4 +145,6 @@ fmt.Println(errors.Is(err, tiptap.ErrNotAllowed), err)
   UTF-16 units.
 - Do not use an attribute type other than `string`: it is a profile defect and returns an error that is not
   `ErrNotAllowed`.
+- Do not store the raw request body after `Validate` passes: duplicate object keys and invalid UTF-8 are not refused
+  yet, so another parser may read the stored bytes differently than the check did. Store a re-marshalled document.
 - Do not copy this package. Extend it here; a copy carries `go-foundation-copy: tiptap@<sha>` and a removal row.
