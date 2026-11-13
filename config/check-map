@@ -21,6 +21,7 @@ docs/** -
 # go-foundation: the unit gate is the foundation module's kit-foundation-check (in every make check); the rows below are ours
 UNITS.md -
 units/*/testdata/** kit-go-test
+units/*/manifest.json kit-go-test
 
 # public-scan-test runs in CHECK_EXTRA (mk/public.mk); public-scan itself needs gh and runs before a push (R-6)
 scripts/public-scan.py -
