@@ -24,8 +24,6 @@
               "attrs": {
                 "href": "https://example.com/page",
                 "target": "_blank",
-                "rel": "noopener noreferrer nofollow",
-                "class": "doc-link",
                 "title": "Example page"
               }
             }

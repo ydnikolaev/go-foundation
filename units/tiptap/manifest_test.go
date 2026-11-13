@@ -1,6 +1,7 @@
 package tiptap
 
 import (
+	"errors"
 	"fmt"
 	"maps"
 	"reflect"
@@ -152,4 +153,36 @@ func ExampleLoadManifest() {
 		m.Profiles["note"], NoRuneCap)
 	fmt.Println(err)
 	// Output: <nil>
+}
+
+// A link carries no rel or class and only target _blank: a client editor honours them (a _blank without noopener is
+// reverse tabnabbing), so the allowlist refuses them before storage. Renderers set rel themselves.
+func TestLinkAttributesAreRefused(t *testing.T) {
+	cases := []struct {
+		name  string
+		attrs string
+		valid bool
+	}{
+		{"href alone", `{"href":"https://example.com"}`, true},
+		{"target _blank and title", `{"href":"https://example.com","target":"_blank","title":"t"}`, true},
+		{"rel", `{"href":"https://example.com","rel":"noopener"}`, false},
+		{"class", `{"href":"https://example.com","class":"site-btn"}`, false},
+		{"target _self", `{"href":"https://example.com","target":"_self"}`, false},
+		{"target _parent", `{"href":"https://example.com","target":"_parent"}`, false},
+		{"target _top", `{"href":"https://example.com","target":"_top"}`, false},
+	}
+	for name, p := range map[string]Profile{"article": Article, "email": Email, "example article": exampleArticle} {
+		for _, c := range cases {
+			t.Run(name+"/"+c.name, func(t *testing.T) {
+				body := `{"type":"doc","content":[{"type":"paragraph","content":[{"type":"text","text":"x","marks":[{"type":"link","attrs":` + c.attrs + `}]}]}]}`
+				_, err := Validate([]byte(body), p, NoRuneCap)
+				if c.valid && err != nil {
+					t.Errorf("Validate = %v, want nil", err)
+				}
+				if !c.valid && !errors.Is(err, ErrNotAllowed) {
+					t.Errorf("Validate = %v, want ErrNotAllowed", err)
+				}
+			})
+		}
+	}
 }

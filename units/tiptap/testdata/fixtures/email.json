@@ -23,9 +23,7 @@
               "type": "link",
               "attrs": {
                 "href": "mailto:hello",
-                "target": "_self",
-                "rel": "noopener",
-                "class": "mail-link",
+                "target": "_blank",
                 "title": "Write to us"
               }
             }

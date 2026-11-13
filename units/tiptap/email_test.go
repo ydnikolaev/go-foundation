@@ -215,6 +215,8 @@ func TestRenderEmailClasses(t *testing.T) {
 
 func TestRenderEmailLinks(t *testing.T) {
 	const external = ` href="https://example.com/a?x=1" target="_blank" rel="ugc nofollow noopener noreferrer">`
+	// The profile admits target _blank and a title; the renderer still writes its own fixed target and rel and no title.
+	allowed := `{"type":"link","attrs":{"href":"https://example.com/a?x=1","target":"_blank","title":"Hover"}}`
 	hostile := `{"type":"link","attrs":{"href":"https://example.com/a?x=1","target":"_self","rel":"noopener","class":"evil","title":"Hover"}}`
 	for _, c := range []struct {
 		name     string
@@ -225,7 +227,7 @@ func TestRenderEmailLinks(t *testing.T) {
 		{"https", emailLink("https://example.com/a?x=1"), `<a class="x-a"` + external + "label</a>", "label (https://example.com/a?x=1)"},
 		{"http", emailLink("http://example.com/"), `<a class="x-a" href="http://example.com/" target="_blank" rel="ugc nofollow noopener noreferrer">label</a>`, "label (http://example.com/)"},
 		{"mailto", emailLink("mailto:a"), `<a class="x-a" href="mailto:a">label</a>`, "label (mailto:a)"},
-		{"document attributes ignored", hostile, `<a class="x-a"` + external + "label</a>", "label (https://example.com/a?x=1)"},
+		{"document attributes ignored", allowed, `<a class="x-a"` + external + "label</a>", "label (https://example.com/a?x=1)"},
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			l := renderEmail(t, doc(emailPara(emailText("label", c.mark))), emailOpts(nil))
@@ -242,6 +244,12 @@ func TestRenderEmailLinks(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("a link with rel, class or another target is refused", func(t *testing.T) {
+		if _, err := RenderEmail(doc(emailPara(emailText("label", hostile))), emailOpts(nil)); !errors.Is(err, ErrNotAllowed) {
+			t.Errorf("RenderEmail = %v, want ErrNotAllowed", err)
+		}
+	})
 
 	t.Run("href alone when equal to the text", func(t *testing.T) {
 		l := renderEmail(t, doc(emailPara(emailText("https://example.com/", emailLink("https://example.com/")))), emailOpts(nil))

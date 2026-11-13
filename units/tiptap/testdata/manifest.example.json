@@ -102,9 +102,7 @@
         "link": {
           "attrs": {
             "href": { "type": "string", "required": true, "max": 2048, "pattern": "^(https?://|mailto:)" },
-            "target": { "type": "string", "required": false, "enum": ["_blank", "_self", "_parent", "_top"] },
-            "rel": { "type": "string", "required": false, "max": 200 },
-            "class": { "type": "string", "required": false, "max": 200 },
+            "target": { "type": "string", "required": false, "enum": ["_blank"] },
             "title": { "type": "string", "required": false, "max": 200 }
           }
         }
@@ -176,9 +174,7 @@
         "link": {
           "attrs": {
             "href": { "type": "string", "required": true, "max": 2048, "pattern": "^(https?://|mailto:)" },
-            "target": { "type": "string", "required": false, "enum": ["_blank", "_self", "_parent", "_top"] },
-            "rel": { "type": "string", "required": false, "max": 200 },
-            "class": { "type": "string", "required": false, "max": 200 },
+            "target": { "type": "string", "required": false, "enum": ["_blank"] },
             "title": { "type": "string", "required": false, "max": 200 }
           }
         }
