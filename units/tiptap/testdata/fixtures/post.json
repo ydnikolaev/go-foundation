@@ -1,0 +1,19 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Hello, " },
+        { "type": "mention", "attrs": { "user_id": "u_member-1" } },
+        { "type": "text", "text": "! A short note 😀" },
+        { "type": "hardBreak" },
+        { "type": "text", "text": "see you" }
+      ]
+    },
+    {
+      "type": "paragraph",
+      "content": [{ "type": "text", "text": "Second paragraph" }]
+    }
+  ]
+}

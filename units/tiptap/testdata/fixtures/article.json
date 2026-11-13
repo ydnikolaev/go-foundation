@@ -1,0 +1,86 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "heading",
+      "attrs": { "level": 2 },
+      "content": [{ "type": "text", "text": "Heading two" }]
+    },
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Plain text, " },
+        { "type": "text", "marks": [{ "type": "bold" }], "text": "bold" },
+        { "type": "text", "text": ", " },
+        { "type": "text", "marks": [{ "type": "italic" }], "text": "italic" },
+        { "type": "text", "text": ", " },
+        { "type": "text", "marks": [{ "type": "code" }], "text": "code" },
+        { "type": "text", "text": " and " },
+        {
+          "type": "text",
+          "marks": [
+            {
+              "type": "link",
+              "attrs": {
+                "href": "https://example.com/page",
+                "target": "_blank",
+                "rel": "noopener noreferrer nofollow",
+                "class": "doc-link",
+                "title": "Example page"
+              }
+            }
+          ],
+          "text": "a link"
+        },
+        { "type": "hardBreak" },
+        { "type": "text", "text": "after the break" }
+      ]
+    },
+    {
+      "type": "heading",
+      "attrs": { "level": 3 },
+      "content": [{ "type": "text", "text": "Lists" }]
+    },
+    {
+      "type": "bulletList",
+      "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "item" }] }] }
+      ]
+    },
+    {
+      "type": "orderedList",
+      "attrs": { "start": 3, "type": "a" },
+      "content": [
+        { "type": "listItem", "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "third" }] }] }
+      ]
+    },
+    {
+      "type": "blockquote",
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "a quote" }] }]
+    },
+    { "type": "horizontalRule" },
+    {
+      "type": "image",
+      "attrs": { "mediaId": "media-image-1", "width": 1200, "height": 800, "alt": "First picture" }
+    },
+    {
+      "type": "gallery",
+      "attrs": {
+        "items": [
+          { "mediaId": "media-gallery-1", "width": 800, "height": 1200, "alt": "Tall picture" },
+          { "mediaId": "media-gallery-2", "width": 1200, "height": 800 }
+        ]
+      }
+    },
+    { "type": "video", "attrs": { "provider": "example", "id": "123456" } },
+    {
+      "type": "callout",
+      "attrs": { "tone": "warning" },
+      "content": [{ "type": "paragraph", "content": [{ "type": "text", "text": "Note this" }] }]
+    },
+    {
+      "type": "paragraph",
+      "content": [{ "type": "text", "text": "The end" }]
+    }
+  ]
+}

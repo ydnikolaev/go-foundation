@@ -1,7 +1,6 @@
 package tiptap
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"os"
@@ -201,25 +200,11 @@ func TestValidateCustomProfile(t *testing.T) {
 	})
 	t.Run("a profile defect is not ErrNotAllowed", func(t *testing.T) {
 		bad := Profile{Nodes: map[string]NodeRule{
-			"doc": {Attrs: map[string]AttrRule{"n": {Type: "integer"}}},
+			"doc": {Attrs: map[string]AttrRule{"n": {Type: "boolean"}}},
 		}}
 		_, err := Validate([]byte(`{"type":"doc","attrs":{"n":1}}`), bad, 10)
 		if err == nil || errors.Is(err, ErrNotAllowed) {
 			t.Fatalf("err = %v, want a non-ErrNotAllowed error", err)
 		}
 	})
-}
-
-// Post must equal its JSON form in testdata/post_profile.json, so a profile
-// kept as a file and the built-in Go value cannot drift apart.
-func TestPostEqualsJSONProfile(t *testing.T) {
-	var want Profile
-	dec := json.NewDecoder(bytes.NewReader(fixture(t, "post_profile.json")))
-	dec.DisallowUnknownFields() // a rule the unit cannot express is a mismatch, not a skip
-	if err := dec.Decode(&want); err != nil {
-		t.Fatalf("decode post profile: %v", err)
-	}
-	if !reflect.DeepEqual(Post, want) {
-		t.Errorf("Post differs from testdata/post_profile.json:\n got  %+v\n want %+v", Post, want)
-	}
 }

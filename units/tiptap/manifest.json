@@ -1,0 +1,170 @@
+{
+  "version": 1,
+  "profiles": {
+    "post": {
+      "maxNodes": 1000,
+      "maxDepth": 4,
+      "nodes": {
+        "doc": { "attrs": {} },
+        "paragraph": { "attrs": {} },
+        "text": { "attrs": {}, "leaf": true },
+        "hardBreak": { "attrs": {}, "leaf": true },
+        "mention": {
+          "attrs": {
+            "user_id": { "type": "string", "required": true, "max": 64, "pattern": "^[A-Za-z0-9_-]+$" }
+          },
+          "leaf": true
+        }
+      },
+      "marks": {}
+    },
+    "article": {
+      "maxNodes": 5000,
+      "maxDepth": 10,
+      "nodes": {
+        "doc": { "attrs": {} },
+        "paragraph": { "attrs": {} },
+        "text": { "attrs": {}, "leaf": true },
+        "hardBreak": { "attrs": {}, "leaf": true },
+        "heading": {
+          "attrs": {
+            "level": { "type": "integer", "required": true, "enum": [2, 3] }
+          }
+        },
+        "blockquote": { "attrs": {} },
+        "bulletList": { "attrs": {} },
+        "orderedList": {
+          "attrs": {
+            "start": { "type": "integer", "required": false, "min": 1, "max": 999999 },
+            "type": { "type": "string", "required": false, "enum": ["1", "a", "A", "i", "I"] }
+          }
+        },
+        "listItem": { "attrs": {} },
+        "horizontalRule": { "attrs": {}, "leaf": true },
+        "image": {
+          "attrs": {
+            "mediaId": { "type": "string", "required": true, "max": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+            "width": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+            "height": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+            "alt": { "type": "string", "required": false, "max": 300 }
+          },
+          "transient": ["uploadId", "uploadStatus"],
+          "leaf": true
+        },
+        "gallery": {
+          "attrs": {
+            "items": {
+              "type": "array",
+              "required": true,
+              "min": 2,
+              "max": 20,
+              "items": {
+                "attrs": {
+                  "mediaId": { "type": "string", "required": true, "max": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+                  "width": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+                  "height": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+                  "alt": { "type": "string", "required": false, "max": 300 }
+                },
+                "transient": ["uploadId", "uploadStatus"]
+              }
+            }
+          },
+          "leaf": true
+        },
+        "callout": {
+          "attrs": {
+            "tone": { "type": "string", "required": false, "enum": ["info", "warning"] }
+          }
+        }
+      },
+      "marks": {
+        "bold": { "attrs": {} },
+        "italic": { "attrs": {} },
+        "code": { "attrs": {} },
+        "link": {
+          "attrs": {
+            "href": { "type": "string", "required": true, "max": 2048, "pattern": "^(https?://|mailto:)" },
+            "target": { "type": "string", "required": false, "enum": ["_blank", "_self", "_parent", "_top"] },
+            "rel": { "type": "string", "required": false, "max": 200 },
+            "class": { "type": "string", "required": false, "max": 200 },
+            "title": { "type": "string", "required": false, "max": 200 }
+          }
+        }
+      }
+    },
+    "email": {
+      "maxNodes": 5000,
+      "maxDepth": 10,
+      "nodes": {
+        "doc": { "attrs": {} },
+        "paragraph": { "attrs": {} },
+        "text": { "attrs": {}, "leaf": true },
+        "hardBreak": { "attrs": {}, "leaf": true },
+        "heading": {
+          "attrs": {
+            "level": { "type": "integer", "required": true, "enum": [2, 3] }
+          }
+        },
+        "blockquote": { "attrs": {} },
+        "bulletList": { "attrs": {} },
+        "orderedList": {
+          "attrs": {
+            "start": { "type": "integer", "required": false, "min": 1, "max": 999999 },
+            "type": { "type": "string", "required": false, "enum": ["1", "a", "A", "i", "I"] }
+          }
+        },
+        "listItem": { "attrs": {} },
+        "horizontalRule": { "attrs": {}, "leaf": true },
+        "image": {
+          "attrs": {
+            "mediaId": { "type": "string", "required": true, "max": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+            "width": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+            "height": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+            "alt": { "type": "string", "required": false, "max": 300 }
+          },
+          "transient": ["uploadId", "uploadStatus"],
+          "leaf": true
+        },
+        "gallery": {
+          "attrs": {
+            "items": {
+              "type": "array",
+              "required": true,
+              "min": 2,
+              "max": 20,
+              "items": {
+                "attrs": {
+                  "mediaId": { "type": "string", "required": true, "max": 64, "pattern": "^[A-Za-z0-9_-]+$" },
+                  "width": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+                  "height": { "type": "integer", "required": true, "min": 1, "max": 20000 },
+                  "alt": { "type": "string", "required": false, "max": 300 }
+                },
+                "transient": ["uploadId", "uploadStatus"]
+              }
+            }
+          },
+          "leaf": true
+        },
+        "callout": {
+          "attrs": {
+            "tone": { "type": "string", "required": false, "enum": ["info", "warning"] }
+          }
+        }
+      },
+      "marks": {
+        "bold": { "attrs": {} },
+        "italic": { "attrs": {} },
+        "code": { "attrs": {} },
+        "link": {
+          "attrs": {
+            "href": { "type": "string", "required": true, "max": 2048, "pattern": "^(https?://|mailto:)" },
+            "target": { "type": "string", "required": false, "enum": ["_blank", "_self", "_parent", "_top"] },
+            "rel": { "type": "string", "required": false, "max": 200 },
+            "class": { "type": "string", "required": false, "max": 200 },
+            "title": { "type": "string", "required": false, "max": 200 }
+          }
+        }
+      }
+    }
+  }
+}
