@@ -26,7 +26,7 @@ light: each selected target runs as `$KIT_MAKE <target>` with KIT_CHECK_PATHS (n
 in tier order (KIT-ONCE, R-196): light targets first, then unclassed ones, then heavy ones, each in map order, classed as
 the queue shim classes goals (template/GNUmakefile; KIT_HEAVY_TARGETS, KIT_DOCKER_TARGETS and KIT_LIGHT_TARGETS from the environment, else
 .devkit/config.env). Every target of a tier runs, so one run reports every red of it; a red tier stops every later tier
-(`check-select: stopped before <tier> <names>: <tier> red <targets>`, exit 1), and within the heavy tier no target starts
+(`check-select: stopped before <tier> <names> [+ CHECK_EXTRA <goals after kit-select>]: <tier> red <targets>`, exit 1; FB-889), and within the heavy tier no target starts
 after a red one. full: only when KIT_GOALS names check-full or check-docker; the target of every row that wins for
 at least one tracked path (git ls-files) runs with KIT_CHECK_PATHS unset (empty means the whole tree), then every module's
 `check` target once; no base, no diff.
@@ -799,6 +799,33 @@ class Watch:
 
 # ---- running ---------------------------------------------------------------------------------------------------
 
+def unrun_extras(root: Path) -> list[str]:
+    """FB-889: the CHECK_EXTRA goals after kit-select, in make's order: a red selector stops make, so these never start. The
+    words come from make's database (parse_database's); a database that cannot be read, or no kit-select in it, names none."""
+    try:
+        text = make_database(root)
+    except Stop:
+        return []
+    for line in text.splitlines():
+        if line.startswith("# Files"):
+            break
+        found = CHECK_EXTRA_LINE.match(line)
+        if found:
+            words = [word for word in found.group(1).split() if "$" not in word]
+            return words[words.index("kit-select") + 1:] if "kit-select" in words else []
+    return []
+
+
+def stop_line(parts: list[str], klass: str, tier_red: list[str]) -> None:
+    """The one stop line (`stopped before <what>: <tier> red <targets>`): `parts` are the later tiers' goals; FB-889: the
+    CHECK_EXTRA goals that will not run follow as `CHECK_EXTRA <names>`, so a partial red cannot read as the whole verdict."""
+    extras = unrun_extras(Path.cwd())
+    if extras:
+        parts = [*parts, f"CHECK_EXTRA {' '.join(extras)}"]
+    if parts:
+        say(f"{TAG} stopped before {' + '.join(parts)}: {klass} red {' '.join(tier_red)}", err=True)
+
+
 def run_targets(order: list[str], paths_of: dict[str, list[str]], tier: str,
                 timings: list[dict] | None = None,
                 selectors: dict[str, set[str]] | None = None,
@@ -869,17 +896,15 @@ def run_targets(order: list[str], paths_of: dict[str, list[str]], tier: str,
                 tier_red.append(target)
                 if klass == "heavy":  # one heavy target at a time: nothing starts after a red one
                     rest = names[position + 1:]
-                    if rest:
-                        say(f"{TAG} stopped before heavy {' '.join(rest)}: heavy red {' '.join(tier_red)}", err=True)
+                    stop_line([f"heavy {' '.join(rest)}"] if rest else [], "heavy", tier_red)
                     break
         if watch is not None and not tier_red and watch.tier(klass, done[klass]):  # judged after the tier
             tier_red.append(f"tier:{klass}")
             red.append(f"tier:{klass}")
         if tier_red and klass != "heavy":
             later = [(name, groups[name]) for name in TIER_ORDER[at + 1:] if groups[name]]
-            if later:
-                skipped = [target for _, names_ in later for target in names_]
-                say(f"{TAG} stopped before {later[0][0]} {' '.join(skipped)}: {klass} red {' '.join(tier_red)}", err=True)
+            skipped = [target for _, names_ in later for target in names_]
+            stop_line([f"{later[0][0]} {' '.join(skipped)}"] if later else [], klass, tier_red)
             break
     if watch is not None and order:
         watch.sample()
