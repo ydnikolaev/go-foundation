@@ -1,0 +1,22 @@
+Monthly letter
+
+Plain text, bold, italic, code and a mail link (mailto:hello)
+after the break
+
+Lists
+
+- item
+
+2. second
+
+> a quote
+
+---
+
+Photo: https://example.com/articles/1
+
+Gallery: https://example.com/articles/1
+
+A side note
+
+The end
