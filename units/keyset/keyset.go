@@ -5,7 +5,9 @@
 // The cursor is opaque to clients: a base64url string holding a version byte, the key and a checksum over the list's
 // scope and the payload. It carries no secret and grants nothing (it only positions a query that enforces its own
 // rules), so the checksum is a plain hash: it refuses a cursor that is malformed, of another version, of another list
-// or altered, never a forgery by someone who reads this package.
+// or altered, never a forgery by someone who reads this package. Anyone can decode a cursor and seal another around any
+// key, so never put a secret in a key, and enforce who may see which row inside the store's query (its WHERE), never by
+// filtering rows after Fetch: a forged cursor can position the query anywhere.
 //
 // A list reads its rows through a Store port; the package fetches one row more than the limit to know whether another
 // page follows and hands out a next cursor only then. A list may show a head item first on its first page (a pinned or
@@ -179,8 +181,8 @@ type Page[T any] struct {
 
 // Page reads the page after cursor ("" for the first) of at most Limits.Clamp(limit) rows, plus the head on the first
 // page. A cursor this list did not hand out, or one whose key ValidKey refuses, is ErrInvalidCursor. Next is set only
-// when more rows exist, and is the key of the page's last row, so a caller that drops rows from Items (a filter it
-// cannot write in the store) still resumes after every row it was handed.
+// when more rows exist, and is the key of the page's last row, so a caller that drops rows from Items (a cosmetic
+// filter, never a visibility rule) still resumes after every row it was handed.
 func (l List[T]) Page(ctx context.Context, cursor string, limit int) (Page[T], error) {
 	n := l.Limits.Clamp(limit)
 	var after *Key

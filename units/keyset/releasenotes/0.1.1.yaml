@@ -1,0 +1,34 @@
+schema: foundation/releasenotes/v1
+version: 0.1.1
+released: 2026-11-13
+headline: The cursor is opaque but not secret or signed; the card and docs now say so, and store errors are wrapped
+changes:
+  - id: KEYSET-0101-1
+    kind: change
+    impact: high
+    subject: The cursor is not a secret, a signature or a permission
+    detail: >-
+      The checksum is an unkeyed hash, so anyone can decode a cursor or seal another around any key; it refuses only a
+      malformed, wrong-version or other-list cursor. The card, the package doc and the README now say so, and tell the
+      reader to keep secrets out of the key and to enforce visibility inside the store's query, never by filtering
+      rows after Fetch, because a forged cursor can position the query anywhere.
+    affects:
+      - keyset.Codec
+      - keyset.List
+    action:
+      scope: none
+      why: >-
+        No code behaviour changed. A consumer that filters rows after Fetch to hide them from some readers should move
+        that rule into the store query; there is no command that finds those places.
+  - id: KEYSET-0101-2
+    kind: fix
+    impact: normal
+    subject: Page wraps the store and head errors
+    detail: >-
+      An error from Store.Fetch or List.Head is now wrapped with the step that failed; errors.Is on the original error
+      still matches.
+    affects:
+      - keyset.List.Page
+    action:
+      scope: none
+      why: errors.Is and errors.As still see the original error; only the message text gains a prefix.

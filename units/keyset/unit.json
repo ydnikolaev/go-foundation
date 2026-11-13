@@ -24,10 +24,10 @@
   ],
   "use_when": [
     "an API lists rows by time and id and must not repeat or skip one as rows change",
-    "a client needs a next-page token it cannot read or tamper with"
+    "a client needs an opaque next-page token to hand back to the client"
   ],
   "not_for": [
     "jumping to page N or counting all rows: a cursor only moves forward from the last row seen",
-    "authenticating a cursor against forgery: the checksum is unkeyed, so check ownership in the query"
+    "a secret or signed cursor: anyone can decode or forge one, so enforce access in the query"
   ]
 }

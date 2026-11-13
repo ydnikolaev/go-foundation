@@ -2,13 +2,13 @@
 
 Keyset (seek) pagination for a list ordered by a time and then an id. A page resumes strictly after the last key of the
 previous one, so a row inserted or deleted between two reads never repeats or skips another, and the next-page token is
-an opaque base64url cursor: a version byte, the key and a checksum over the list's scope and the payload. Standard
+an opaque (not secret, not signed) base64url cursor: a version byte, the key and a checksum over the list's scope and the payload. Standard
 library only.
 
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/keyset@v0.1.0
+go get github.com/ydnikolaev/go-foundation/units/keyset@v0.1.1
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.
@@ -152,8 +152,11 @@ unit's tests):
 
 ## Do not
 
-- Do not treat the cursor as a secret or a permission: the checksum is unkeyed, so anyone who reads this package can
-  seal a cursor around any key. Check ownership in the query, and set `ValidKey` when the id has a shape.
+- Do not treat the cursor as a secret, a signature or a permission: it is opaque, not protected. Anyone can decode it
+  and seal another around any key, and the checksum refuses only a malformed, wrong-version or other-list cursor.
+- Do not put a secret in the `Key`, and do not enforce visibility after `Fetch`: filter by who may see a row inside the
+  store's query (the `WHERE`), because a forged cursor can position the query anywhere. Set `ValidKey` when the id has
+  a shape.
 - Do not offer "page N" or a total count on top of it: a cursor only moves forward from the last row seen.
 - Do not let the store return the `Head` item, and do not reorder rows after `Fetch`: `Next` is the key of the last row
   `Fetch` returned within the page.
