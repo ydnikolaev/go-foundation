@@ -196,7 +196,7 @@ func (l List[T]) Page(ctx context.Context, cursor string, limit int) (Page[T], e
 	}
 	rows, err := l.Store.Fetch(ctx, after, n+1)
 	if err != nil {
-		return Page[T]{}, err
+		return Page[T]{}, fmt.Errorf("keyset: fetch: %w", err)
 	}
 	var out Page[T]
 	if len(rows) > n {
@@ -207,7 +207,7 @@ func (l List[T]) Page(ctx context.Context, cursor string, limit int) (Page[T], e
 	if cursor == "" && l.Head != nil {
 		head, ok, err := l.Head(ctx)
 		if err != nil {
-			return Page[T]{}, err
+			return Page[T]{}, fmt.Errorf("keyset: head: %w", err)
 		}
 		if ok {
 			out.Items = append(out.Items, head)
