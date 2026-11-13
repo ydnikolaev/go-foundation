@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.0
-released: unreleased
+released: 2026-11-13
 headline: First release, a validator for rich-text editor JSON (ProseMirror/Tiptap shape) taken from a consumer
 changes:
   - id: TIPTAP-0100-1
