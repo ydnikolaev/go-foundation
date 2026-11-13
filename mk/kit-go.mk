@@ -32,7 +32,7 @@ $(KIT_CACHE_STAMP):
 CHECK_EXTRA += cache-trim-auto
 CHECK_FULL += cache-trim-test
 
-.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test kit-go-lint kit-go-grep kit-go-shape
+.PHONY: cache-trim cache-trim-auto cache-trim-test cache-status kit-go-test kit-go-lint kit-go-grep kit-go-shape kit-go-baseline
 
 # FB-725 (R-214): grep gates in every `make check`: no //nolint and no time.Sleep in a _test.go (code keeps the explained //nolint:<linter> // <why>, nolintlint polices it). Whole-tree like
 # the lint above, for the same reason: a rule that only fires on touched files lets old breaches hide.
@@ -42,7 +42,7 @@ CHECK_EXTRA += kit-go-grep
 # until the repo writes config/go-shape.ceiling or sets a KIT_GO_* bound in .devkit/config.env, so an update never turns `make check` red.
 CHECK_EXTRA += kit-go-shape
 
-# FB-724 (R-214): the lint baseline, .golangci.yml (managed, errorlint + wrapcheck + nolintlint), in every `make check`.
+# FB-724 (R-214): the lint baseline, .golangci.yml (managed, govet + errorlint + wrapcheck + nolintlint), in every `make check`.
 # Whole-tree on purpose, not selected by changed paths: golangci-lint is cached (GOLANGCI_LINT_CACHE) and a rule that
 # only fires on touched files lets old breaches hide. GOLANGCI_LINT names the binary (a test points it at a missing one).
 #
@@ -57,28 +57,54 @@ CHECK_EXTRA += kit-go-lint
 kit-go-test: ## Go tests for the changed packages (KIT_CHECK_PATHS), else every module's ./...
 	@bash scripts/kit/go-test.sh
 
-kit-go-lint: ## golangci-lint v2 baseline (.golangci.yml: errorlint, wrapcheck, nolintlint) in every go.mod dir; refuses without the binary
+# FB-932 (R-259): with config/go-lint.ceiling (project-owned, written once by kit-go-baseline) a run does not exit on findings: every module
+# prints absolute paths, the lines become `<path>\t<linter>\t<line>` and scripts/kit/go-ceiling.sh judges them once, per package and linter.
+# Any non-zero exit of the tool is then a failure to run (exit 2), never judged. Without the file every finding is red, as before.
+# A build error prints as `<path>:1: : # <pkg>` and the linter `(typecheck)` ends the line after it, so a line with no linter takes the
+# first following line that ends in one (else `unknown`).
+kit-go-lint: ## golangci-lint v2 baseline (.golangci.yml: govet, errorlint, wrapcheck, nolintlint) in every go.mod dir; config/go-lint.ceiling counts old findings; refuses without the binary
 	@mods="$$(git ls-files -co --exclude-standard -- go.mod '*/go.mod' | sort -u)"; \
 	if [ -z "$$mods" ]; then echo "kit-go-lint: no go.mod: nothing to lint"; exit 0; fi; \
 	bin="$$(command -v "$(GOLANGCI_LINT)" 2>/dev/null)"; \
 	if [ -z "$$bin" ]; then \
 		echo "kit-go-lint: $(GOLANGCI_LINT) is not installed: not a pass. Install v2: brew install golangci-lint, or go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest" >&2; exit 2; fi; \
-	case "$$("$$bin" --version 2>&1)" in *"version 2."*) ;; *) \
+	ver="$$("$$bin" --version 2>&1)"; \
+	case "$$ver" in *"version 2."*) ;; *) \
 		echo "kit-go-lint: $$bin is not golangci-lint v2 (.golangci.yml is version 2; pin: config/versions.toml [template] in devkit): upgrade it" >&2; exit 2 ;; esac; \
 	[ -f .golangci.yml ] || { echo "kit-go-lint: .golangci.yml is missing: run devkit update --apply" >&2; exit 2; }; \
 	cfg="$(CURDIR)/.golangci.yml"; \
+	ceil=""; if [ -f config/go-lint.ceiling ] || [ "$$KIT_GO_CEILING" = write ]; then ceil=1; fi; \
+	wflag=""; if [ "$$KIT_GO_CEILING" = write ]; then wflag=--write; fi; \
+	top="$$(git rev-parse --show-toplevel 2>/dev/null || pwd)"; found=.artifacts/tmp/go-lint-findings.tsv; \
+	if [ -n "$$ceil" ]; then mkdir -p .artifacts/tmp; : > "$$found"; fi; \
 	rc=0; \
 	for gomod in $$mods; do \
 		[ -f "$$gomod" ] || continue; \
 		dir="$$(dirname "$$gomod")"; \
 		if [ "$$dir" != . ]; then case "/$$dir/" in */testdata/*|*/vendor/*|*/_*|*/.?*) continue ;; esac; fi; \
 		echo "kit-go-lint: $$dir"; \
-		(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$$cfg" ./...) || rc=1; \
+		if [ -z "$$ceil" ]; then \
+			(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$$cfg" ./...) || rc=1; \
+		else \
+			o="$$(cd "$$dir" && "$$bin" run --allow-serial-runners --config "$$cfg" --issues-exit-code=0 --path-mode abs --output.text.print-issued-lines=false ./...)"; r=$$?; \
+			if [ "$$r" -ne 0 ]; then echo "kit-go-lint: $$bin exited $$r in $$dir: a tool failure, not judged" >&2; if [ -n "$$o" ]; then printf '%s\n' "$$o" >&2; fi; exit 2; fi; \
+			printf '%s\n' "$$o" | awk -v t1="$(CURDIR)" -v t2="$$top" -v t3="$$(pwd -P)" -v t4="$$(pwd)" 'function rel(p,  k, t) { for (k = 1; k <= 4; k++) { t = tp[k]; if (t != "" && index(p, t "/") == 1) return substr(p, length(t) + 2) } return p } function emit() { if (have) printf "%s\t%s\t%s\n", r, (l == "" ? "unknown" : l), r rest; have = 0 } BEGIN { tp[1] = t1; tp[2] = t2; tp[3] = t3; tp[4] = t4 } /^\// { emit(); if (!match($$0, /^[^:]+:[0-9]+/)) next; f = substr($$0, 1, index(substr($$0, 1, RLENGTH), ":") - 1); r = rel(f); rest = substr($$0, length(f) + 1); l = ""; if (match($$0, /\([A-Za-z0-9_-]+\)$$/)) l = substr($$0, RSTART + 1, RLENGTH - 2); have = 1; next } have && l == "" && match($$0, /\([A-Za-z0-9_-]+\)$$/) { l = substr($$0, RSTART + 1, RLENGTH - 2) } END { emit() }' >> "$$found"; \
+		fi; \
 	done; \
+	if [ -n "$$ceil" ]; then \
+		KIT_CEILING_TOOL="$$(printf '%s\n' "$$ver" | sed -n 1p)" bash scripts/kit/go-ceiling.sh kit-go-lint config/go-lint.ceiling $$wflag < "$$found"; exit $$?; fi; \
+	if [ "$$rc" -ne 0 ]; then echo "kit-go-lint: adopting with old findings? standards/adopt.md#go-baseline" >&2; fi; \
 	exit $$rc
 
-kit-go-grep: ## Refuse //nolint and time.Sleep in _test.go files (whole tree)
+kit-go-grep: ## Refuse //nolint and time.Sleep in _test.go files (whole tree); config/go-grep.ceiling counts old ones
 	@bash scripts/kit/go-test-grep.sh
+
+kit-go-baseline: ## Record today's Go lint and grep findings in config/go-lint.ceiling and config/go-grep.ceiling; refuses a file that exists
+	@for f in config/go-lint.ceiling config/go-grep.ceiling; do \
+		if [ -e "$$f" ]; then echo "kit-go-baseline: $$f exists: lower or raise a line by hand" >&2; exit 1; fi; \
+	done; \
+	$(MAKE) --no-print-directory KIT_GO_CEILING=write kit-go-lint && $(MAKE) --no-print-directory KIT_GO_CEILING=write kit-go-grep && \
+	echo "kit-go-baseline: both ceiling files written: commit them, then run make check"
 
 kit-go-shape: ## Code-shape gate: an entry package over 300 code lines, any package over 2000 (advisory until config/go-shape.ceiling exists)
 	@bash scripts/kit/go-shape.sh

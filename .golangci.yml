@@ -1,13 +1,19 @@
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
 # The go module's lint baseline (R-214, FB-724), run by `make kit-go-lint` (part of `make check`) with golangci-lint v2.
-# Only the three linters R-214 names; the exemption is a `//nolint:<linter> // <why>` on the line, which nolintlint polices.
+# Only the four linters R-214 and FB-942 name; the exemption is a `//nolint:<linter> // <why>` on the line, which nolintlint polices.
+# A repo's own extra linters go in .golangci.project.yml (project-owned, run from its own mk/<area>.mk fragment): golangci-lint reads one config per run.
+# Uncapped (FB-748): a finding count needs every finding, not the first 3 per linter (config/go-lint.ceiling, standards/adopt.md#go-baseline).
 version: "2"
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
 linters:
   default: none
   enable:
     - errorlint # %w for wrapped errors, errors.Is / errors.As instead of == and type assertions
     - wrapcheck # an error from another package is wrapped before it is returned
     - nolintlint # a //nolint names its linter, says why, and is still needed
+    - govet # what `go vet` reports (copylocks, printf, lostcancel, ...): the default analyzer set, in a _test.go too (FB-942)
   settings:
     nolintlint:
       require-explanation: true
