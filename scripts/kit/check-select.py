@@ -48,13 +48,22 @@ them as KIT_COVER_BASE (dropped when there is none) and `config` checks config/c
 exit. The full tier resolves a base for this alone; with none it warns and skips what needs one.
 
 One run per tree (KIT-ONCE, R-196): a green run is a verdict kept outside the tree, one JSON line in
-<git common dir>/kit/verdicts.jsonl (last 200 lines, appended under flock on verdicts.jsonl.lock): v, tree (HEAD^{tree}),
-dirty (the work tree was not clean at start or at end), tier (the tier that ran), targets [{target, seconds, tier, exit}]
-(each target that started, in run order), exit, finished. After selection and every refusal (and the coverage floors),
-the newest line that satisfies the ask wins: same tree, dirty false, exit 0, under 7 days old, every asked target in its
-targets with exit 0, and tier full for a full ask. A hit runs no target and appends nothing; it prints
-`check-select: reuse <tier> verdict of <finished> for tree <key12>` and the summary says `ran nothing (reused)`. A miss
-prints `check-select: no reuse: <reason>`, the reason one of no-verdict, other-tree, dirty, red-last, stale, other-targets
+<git common dir>/kit/verdicts.jsonl (last 200 lines, appended under flock on verdicts.jsonl.lock): v, tree (the tree of the
+work content, VERDICT: `git write-tree` over a temporary copy of the index after `git add -A`, `.artifacts` aside, so
+uncommitted and untracked non-ignored content is in the key; HEAD^{tree} on a clean tree), head_tree (HEAD^{tree}), dirty
+(the work tree was not clean at start or at end; informational), tier (the tier that ran), targets [{target, seconds, tier,
+exit}] (each target that started, in run order), exit, finished. The key is taken at start and again when the line is
+appended; a different tree means a file changed during the run and no line is written (`changed-during-run` on stderr). A
+line without head_tree (older) is read by its tree and counts only when dirty is false. After selection and every refusal
+(and the coverage floors), the newest line that satisfies the ask wins: same tree, exit 0, under 7 days old, every asked
+target in its targets with exit 0, and tier full for a full ask. A hit runs no target and appends nothing; it prints
+`check-select: reuse <tier> verdict of <finished> for tree <key12>` and the summary says `ran nothing (reused)`.
+Unselected diff (light ask only, never a full one): when no line of this tree satisfies it, each asked target is reused
+from the newest fresh green light line of another tree T0 that ran it when the light selection over
+`git diff --name-only T0 <this tree>` does not name it (a diff touching a map or registry file, or, strict, an unmapped path,
+proves nothing); it prints `check-select: reuse: <target> (unselected diff from <tree7>)`, the other targets run and only
+those are recorded, and when none is left nothing runs. A miss
+prints `check-select: no reuse: <reason>`, the reason one of no-verdict, other-tree, dirty (only older lines of this tree, all dirty), red-last, stale, other-targets
 (a line of this tree did not run every asked target, or a light line was asked for full), no-measure (a full ask, and a stack
 with a floors file has no whole-tree measure of this tree in this checkout: the run takes it, FB-711). KIT_REUSE=0 forces a run. A
 selection that selects nothing runs and records nothing; outside a git work tree, or on an unborn HEAD, no verdict is read
@@ -214,9 +223,9 @@ def say(line: str, err: bool = False) -> None:
 
 # ---- git -------------------------------------------------------------------------------------------------------
 
-def run_git(*args: str, stdin: bytes = b"") -> subprocess.CompletedProcess:
+def run_git(*args: str, stdin: bytes = b"", env: dict[str, str] | None = None) -> subprocess.CompletedProcess:
     try:
-        return subprocess.run(["git", *args], capture_output=True, input=stdin)
+        return subprocess.run(["git", *args], capture_output=True, input=stdin, env=env)
     except OSError as exc:
         raise Stop(3, f"{TAG} git {' '.join(args)}: {exc}")
 
@@ -952,24 +961,58 @@ def utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
 
 
+def content_tree() -> str | None:
+    """VERDICT: the tree of the work content: `git write-tree` over a temporary copy of the real index after `git add -A`
+    (`.artifacts` dropped from the copy), so uncommitted and untracked non-ignored content is in the key; the real index is untouched.
+    On a clean tree it is `HEAD^{tree}`. None when git cannot say."""
+    index = git_try("rev-parse", "--git-path", "index")
+    if not index:
+        return None
+    try:
+        data: bytes | None = Path(index).read_bytes()
+        stamp = Path(index).stat()
+    except FileNotFoundError:
+        data = stamp = None  # no index yet: the temporary one starts empty
+    except OSError:
+        return None
+    with tempfile.TemporaryDirectory(prefix="kit-index-") as scratch:
+        tmp = Path(scratch) / "index"
+        if data is not None and stamp is not None:
+            tmp.write_bytes(data)
+            # racy git: an entry is trusted by its stat unless its mtime reaches the INDEX FILE's mtime. The copy keeps the real
+            # index's, or a same-size edit made in the second the index was last written would read as unchanged.
+            os.utime(tmp, ns=(stamp.st_atime_ns, stamp.st_mtime_ns))
+        env = {**os.environ, "GIT_INDEX_FILE": str(tmp)}
+        # `.artifacts` leaves the temporary index after the add: an exclude pathspec naming an ignored `.artifacts/` fails `git add`
+        steps = (("add", "-A", "--", "."), ("rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", ".artifacts"))
+        if any(run_git(*step, env=env).returncode != 0 for step in steps):
+            return None
+        proc = run_git("write-tree", env=env)
+        return (proc.stdout.decode().strip() or None) if proc.returncode == 0 else None
+
+
 class Verdicts:
-    """The verdict file of this repo (`<git common dir>/kit/verdicts.jsonl`) and the tree key of this run. `tree` is None
-    where there is nothing to key on (outside a work tree, an unborn HEAD, no flock): then nothing is read or written."""
+    """The verdict file of this repo (`<git common dir>/kit/verdicts.jsonl`) and the tree key of this run (VERDICT: the
+    tree of the work content, `content_tree`; `head_tree` is `HEAD^{tree}`). `tree` is None where there is nothing to key
+    on (outside a work tree, an unborn HEAD, no flock): then nothing is read or written."""
 
     def __init__(self) -> None:
         self.tree: str | None = None
+        self.head_tree: str | None = None
         self.path: Path | None = None
         self.dirty_start = True
         if fcntl is None or git_try("rev-parse", "--is-inside-work-tree") != "true":
             return
-        tree = git_try("rev-parse", "HEAD^{tree}")
+        head_tree = git_try("rev-parse", "HEAD^{tree}")
         common = git_try("rev-parse", "--path-format=absolute", "--git-common-dir")
         if common is None:  # git before 2.31: the relative answer, read from the cwd (the repo root)
             common = git_try("rev-parse", "--git-common-dir")
             common = str(Path(common).resolve()) if common else None
+        tree = content_tree() if head_tree else None
         if not tree or not common:
             return
         self.tree = tree
+        self.head_tree = head_tree
         self.path = Path(common) / "kit" / "verdicts.jsonl"
         self.dirty_start = self.dirty()
 
@@ -996,16 +1039,15 @@ class Verdicts:
         return rows
 
     def find(self, tier: str, order: list[str]) -> tuple[dict | None, str]:
-        """(the newest line that satisfies the ask, "") or (None, the miss reason)."""
-        if self.dirty_start:
-            return None, "dirty"
+        """(the newest line that satisfies the ask, "") or (None, the miss reason). The key is the work content (VERDICT):
+        a dirty tree is no miss by itself; an old line (no `head_tree`) counts only when it was clean."""
         rows = self.lines()
         if not rows:
             return None, "no-verdict"
         mine = [row for row in rows if row.get("tree") == self.tree]
         if not mine:
             return None, "other-tree"
-        clean = [row for row in mine if row.get("dirty") is False]
+        clean = [row for row in mine if self.keyed(row)]
         if not clean:
             return None, "dirty"
         for row in reversed(clean):  # newest first, and past a line that does not satisfy
@@ -1017,6 +1059,40 @@ class Verdicts:
         if not self.fresh(newest):
             return None, "stale"
         return None, "other-targets"
+
+    @staticmethod
+    def keyed(row: dict) -> bool:
+        """A line whose `tree` is a content key: it has `head_tree`; an older line keyed `HEAD^{tree}` and counts if clean."""
+        return row.get("head_tree") is not None or row.get("dirty") is False
+
+    def green_targets(self, row: dict) -> set[str]:
+        done = row.get("targets")
+        return {item.get("target") for item in done if isinstance(item, dict) and item.get("exit") == 0} \
+            if isinstance(done, list) else set()
+
+    def unselected(self, order: list[str], tier: str, selects) -> tuple[dict[str, str], list[str]]:
+        """VERDICT, store A: (target -> the source of its reuse, the targets left to run). A light ask only (a full ask
+        never reuses across trees, R-196). A target is reused from the newest fresh green line of this tier and another tree
+        T0 that ran it, when `selects(paths of git diff --name-only T0 <this tree>)` (the light selection) does not name
+        it. `selects` returns None where it cannot tell."""
+        reused: dict[str, str] = {}
+        if tier != "light" or self.tree is None:
+            return reused, list(order)
+        rows = [row for row in self.lines() if self.keyed(row) and row.get("exit") == 0 and self.fresh(row)]
+        selected: dict[str, set[str] | None] = {}
+        for target in order:
+            for row in reversed(rows):
+                other = row.get("tree")
+                if other == self.tree or row.get("tier") != tier or target not in self.green_targets(row):
+                    continue
+                if other not in selected:
+                    diff = git_try("diff", "--name-only", "-z", "--no-renames", str(other), self.tree)
+                    selected[other] = selects([p for p in diff.split("\0") if p]) if diff is not None else None
+                names = selected[other]
+                if names is not None and target not in names:
+                    reused[target] = f"unselected diff from {str(other)[:7]}"
+                break  # the newest line that ran it decides
+        return reused, [target for target in order if target not in reused]
 
     @staticmethod
     def fresh(row: dict) -> bool:
@@ -1038,13 +1114,18 @@ class Verdicts:
         return all(target in green for target in order)
 
     def append(self, tier: str, results: list[dict], code: int, watch: "Watch | None" = None) -> None:
-        """Add this run's line (tree dirty at start or now = dirty), under flock, keeping the last VERDICT_LINES. With
+        """Add this run's line (`dirty`: the work tree was not clean at start or now; the key is the work content), under
+        flock, keeping the last VERDICT_LINES. The content is keyed again first: a different tree than at start means a
+        file changed during the run, and the line is written under neither key (`changed-during-run`). With
         `watch` the line also carries swap, quiet, over_budget and flaked (KIT-WATCH; readers ignore unknown fields). A
         failure is one `warn:` line and never changes the exit code."""
         if self.tree is None:
             return
+        if content_tree() != self.tree:
+            say(f"{TAG} changed-during-run: a file changed while the targets ran; no verdict kept", err=True)
+            return
         dirty = self.dirty_start or self.dirty()
-        row = {"v": 1, "tree": self.tree, "dirty": dirty, "tier": tier, "targets": results,
+        row = {"v": 1, "tree": self.tree, "head_tree": self.head_tree, "dirty": dirty, "tier": tier, "targets": results,
                "exit": code, "finished": utc_now().isoformat(timespec="seconds")}
         if watch is not None:
             row.update(watch.finish(results, dirty))
@@ -1069,10 +1150,12 @@ class Verdicts:
 
 
 def reuse_or_run(verdicts: Verdicts, tier: str, order: list[str], cover_red: int, run,
-                 watch: "Watch | None" = None) -> tuple[list[str], list[str], bool]:
+                 watch: "Watch | None" = None, selects=None) -> tuple[list[str], list[str], bool]:
     """Decide reuse for the ask (`tier`, `order`), after selection, every refusal and the floors check (`cover_red`, which
-    joins the recorded exit). A hit runs nothing and appends nothing. Otherwise `run(results)` runs the targets and the
-    line is appended. Returns (ran, red, reused)."""
+    joins the recorded exit). A hit runs nothing and appends nothing. A light miss then reads the unselected diff
+    (`Verdicts.unselected`, VERDICT; `selects` is the light selection over a path list): each target it clears is reused
+    (`check-select: reuse: <target> (<source>)`), the others run, and only those are recorded; all cleared runs nothing.
+    Otherwise `run(results)` runs the targets and the line is appended. Returns (ran, red, reused)."""
     if not order:  # a selection that selects nothing runs nothing and records nothing
         ran, red = run(None)
         return ran, red, False
@@ -1086,7 +1169,14 @@ def reuse_or_run(verdicts: Verdicts, tier: str, order: list[str], cover_red: int
         if hit is not None:
             say(f"{TAG} reuse {hit.get('tier')} verdict of {hit.get('finished')} for tree {verdicts.tree[:12]}")
             return [], [], True
-        say(f"{TAG} no reuse: {why}")
+        reused, left = ({}, list(order)) if why == "KIT_REUSE=0" or selects is None else verdicts.unselected(order, tier, selects)
+        if not reused:
+            say(f"{TAG} no reuse: {why}")
+        for target, source in reused.items():
+            say(f"{TAG} reuse: {target} ({source})")
+        if reused and not left:
+            return [], [], True
+        order[:] = left  # the run takes the targets nothing cleared (the caller's list: its closure reads it)
     results: list[dict] = []
     ran, red = run(results)
     verdicts.append(tier, results, 1 if red or cover_red else 0, watch)
@@ -1348,6 +1438,43 @@ def select_modules(reg, changed: list[str], order: list[str], paths_of: dict[str
     return names, dependents, checked
 
 
+def select(rows: list[Row], reg, changed: list[str]):
+    """The light selection over `changed`: (order, paths_of, selectors, unmapped, changed modules, dependents): the map
+    row that wins per path, then the registry's modules (`select_modules`). A path a module checks is mapped."""
+    paths_of: dict[str, list[str]] = {}
+    order: list[str] = []
+    unmapped: list[str] = []
+    for path in changed:
+        row = first_row(rows, path)
+        if row is None:
+            unmapped.append(path)
+            continue
+        for target in row.targets:
+            if target not in paths_of:
+                paths_of[target] = []
+                order.append(target)
+            paths_of[target].append(path)
+    selectors: dict[str, set[str]] = {}
+    changed_modules: list[str] = []
+    dependents: list[str] = []
+    if reg is not None:
+        changed_modules, dependents, checked = select_modules(reg, changed, order, paths_of, selectors)
+        unmapped = [p for p in unmapped if p not in checked]  # a path a module checks is mapped, strict or not
+    return order, paths_of, selectors, unmapped, changed_modules, dependents
+
+
+MAP_PATHS = ("config/check-map", ".devkit/check-map.d/")  # a diff touching the selection's own rules proves nothing
+
+
+def selected_by(rows: list[Row], reg, paths: list[str], strict: bool) -> set[str] | None:
+    """VERDICT: the targets the light selection picks for `paths` (the diff between two trees), or None when it cannot be
+    told: no paths, a map or registry file among them, or (strict) a path no row maps, which a run would refuse."""
+    if not paths or any(p.startswith(MAP_PATHS) or p in REGISTRY_FILES for p in paths):
+        return None
+    order, _paths_of, _selectors, unmapped, _changed, _dependents = select(rows, reg, paths)
+    return None if strict and unmapped else set(order)
+
+
 def goals_name_full() -> bool:
     return any(word in FULL_GOALS for word in os.environ.get("KIT_GOALS", "").split())
 
@@ -1415,26 +1542,8 @@ def execute(args: argparse.Namespace) -> int:
         return 0
     sha7 = diff_base[:7]
     changed, untracked, deleted = changed_set(diff_base)
-    paths_of: dict[str, list[str]] = {}
-    order = []
-    unmapped = []
-    for path in changed:
-        row = first_row(rows, path)
-        if row is None:
-            unmapped.append(path)
-            continue
-        for target in row.targets:
-            if target not in paths_of:
-                paths_of[target] = []
-                order.append(target)
-            paths_of[target].append(path)
-    selectors = {}
-    changed_modules: list[str] = []
-    dependents: list[str] = []
     reg = load_registry(root, explicit, changed)
-    if reg is not None:
-        changed_modules, dependents, checked = select_modules(reg, changed, order, paths_of, selectors)
-        unmapped = [p for p in unmapped if p not in checked]  # a path a module checks is mapped, strict or not
+    order, paths_of, selectors, unmapped, changed_modules, dependents = select(rows, reg, changed)
     if strict:
         # the gate is a tracked or staged path no row maps; an untracked one (a stray .bak) or a deleted one (nothing
         # left to check, FB-656) is warned and skipped
@@ -1455,7 +1564,8 @@ def execute(args: argparse.Namespace) -> int:
     timings: list[dict] = []
     ran, red, reused = reuse_or_run(
         verdicts, "light", order, cover_red,
-        lambda results: run_targets(order, paths_of, "light", timings, selectors, results, watch=watch), watch)
+        lambda results: run_targets(order, paths_of, "light", timings, selectors, results, watch=watch), watch,
+        lambda paths: selected_by(rows, reg, paths, strict))
     code = 1 if red or cover_red else 0
     selector_done(root, code, timings)
     if not strict:
