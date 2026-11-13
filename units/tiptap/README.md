@@ -9,7 +9,7 @@ plain-text part for a letter. `Post`, `Article` and `Email` are built-in profile
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/tiptap@v0.2.0
+go get github.com/ydnikolaev/go-foundation/units/tiptap@v0.2.1
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.
