@@ -1,0 +1,31 @@
+{
+  "id": "moderation",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "member reports, hiding, warnings and mutes with an append-only log",
+  "pairs": [],
+  "keywords": [
+    "moderation",
+    "report a comment",
+    "hide content",
+    "mute a user",
+    "sanctions",
+    "moderator action log",
+    "community moderation",
+    "forum moderation",
+    "flag abusive comments",
+    "silence a user",
+    "repeat offenders",
+    "record of moderator decisions"
+  ],
+  "use_when": [
+    "members report posts, moderators hide them and warn or mute authors",
+    "every act logs its actor and reason in one transaction"
+  ],
+  "not_for": [
+    "automatic content classification, spam or abuse detection: every act here is a moderator's decision",
+    "storage, visibility rules, reason vocabulary or notifications: the host owns the tables and binds the Store port itself",
+    "blocking logins or deleting accounts: a mute is a record the host reads, this package enforces nothing"
+  ]
+}

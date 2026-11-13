@@ -1,0 +1,25 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: unreleased
+headline: First release, community moderation rules over a generic Target and a Store port, taken from a consumer
+changes:
+  - id: MODERATION-0100-1
+    kind: feat
+    impact: high
+    subject: Community moderation rules as a shared unit
+    detail: >-
+      Reports (one open per reporter and item, never on one's own item, resolved as actioned or dismissed), hiding and
+      unhiding an item, the sanctions ladder (a warning, a mute for a period, a mute forever, each with a non-empty
+      reason) and an append-only sanction log, all through a Store port the host binds to one transaction, so a change
+      and its log entry commit or roll back together. Taken from a consumer at its own tested state.
+    affects:
+      - moderation.Store
+      - moderation.FileReport
+      - moderation.Resolve
+      - moderation.Hide
+      - moderation.Unhide
+      - moderation.Issue
+      - moderation.Lift
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

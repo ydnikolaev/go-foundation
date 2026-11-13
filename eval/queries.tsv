@@ -19,6 +19,8 @@ go/keyset	paginate an API list endpoint with a next-page cursor
 go/keyset	my mobile app keeps loading more entries as the user swipes down and no entry may show twice or vanish when new ones arrive
 go/avatar	let users pick a profile picture from a built-in set
 go/avatar	instead of asking people to upload a photo, offer a handful of ready-made little portraits drawn by code
+go/moderation	users report a post in my forum and a moderator can hide it or temporarily mute the author, with an audit trail of who did what
+go/moderation	let people on my forum flag abusive comments, silence repeat offenders for a while, and keep a record of every decision
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

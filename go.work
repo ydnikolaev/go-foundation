@@ -8,5 +8,6 @@ use (
 	./units/clock
 	./units/cron
 	./units/keyset
+	./units/moderation
 	./units/tiptap
 )
