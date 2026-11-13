@@ -5,4 +5,5 @@
 | alert | primitive | experimental | send operational alerts without flooding the channel |
 | clock | primitive | experimental | test time-dependent code without sleeping |
 | cron | primitive | experimental | schedule recurring jobs in a service process |
+| keyset | primitive | experimental | page a long list with an opaque cursor safe against inserts |
 | tiptap | primitive | experimental | check rich-text editor JSON on the server against an allowlist |
