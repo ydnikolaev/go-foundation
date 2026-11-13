@@ -220,4 +220,6 @@ fmt.Println(errors.Is(err, tiptap.ErrNotAllowed), err)
   as the fragment `RenderEmail` returned. Do not build a `Letter` from your own strings with `template.HTML`.
 - Do not store the raw request body after `Validate` passes: duplicate object keys and invalid UTF-8 are not refused
   yet, so another parser may read the stored bytes differently than the check did. Store a re-marshalled document.
+- Do not expect a `rel` or `class` on a link: the embedded profiles accept none, and `target` only as `_blank`. A
+  renderer sets `rel` itself (`RenderEmail` writes `ugc nofollow noopener noreferrer`); a client editor must not read it from the document.
 - Do not copy this package. Extend it here; a copy carries `go-foundation-copy: tiptap@<sha>` and a removal row.

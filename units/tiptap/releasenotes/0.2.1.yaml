@@ -1,0 +1,27 @@
+schema: foundation/releasenotes/v1
+version: 0.2.1
+released: 2026-11-13
+headline: The embedded profiles refuse rel, class and a target other than _blank on a link
+changes:
+  - id: TIPTAP-0201-1
+    kind: fix
+    impact: normal
+    subject: Article and Email refuse rel, class and any link target but _blank
+    detail: >-
+      The link mark of the embedded article and email profiles let a document carry its own rel, its own class and a
+      target of _blank, _self, _parent or _top. RenderEmail ignores them and writes a fixed target and rel, but the
+      stored JSON is also rendered by client editors that honour the attributes: a user could drop noopener beside
+      _blank (reverse tabnabbing) or inject class names of the site. The manifest now lists no rel and no class on a
+      link, and target is optional with the one value _blank, so Validate refuses a link that carries rel, class or
+      another target. href and title are as before. Post has no link mark and is unchanged. A renderer sets rel itself.
+      A stored body that carries those attributes now fails validation, so re-validate stored bodies and strip rel,
+      class and a target other than _blank from their links, or rewrite those documents, before they are saved or
+      rendered again.
+    affects:
+      - tiptap.Article
+      - tiptap.Email
+      - units/tiptap/manifest.json
+      - units/tiptap/testdata/manifest.example.json
+    action:
+      scope: local
+      why: A document stored with a link rel, class or target other than _blank now returns ErrNotAllowed; strip those attributes from stored bodies, and from editor output, before Validate.
