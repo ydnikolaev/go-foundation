@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-13
+headline: First release, keyset pagination over (time, id) with an opaque checksummed cursor, taken from a consumer
+changes:
+  - id: KEYSET-0100-1
+    kind: feat
+    impact: high
+    subject: Keyset pagination as a shared unit
+    detail: >-
+      List pages rows by a (Time, ID) Key through a Store port, fetches one row more than the limit to know whether
+      a next page exists, and hands out an opaque base64url cursor holding a version byte, the key and a checksum over
+      the scope and the payload. An optional Head item shows first on the first page. Taken from a consumer at its own
+      tested state.
+    affects:
+      - keyset.List
+      - keyset.Codec
+      - keyset.Key
+      - keyset.Store
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

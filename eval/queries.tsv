@@ -15,6 +15,8 @@ go/cron	run a job every 10 minutes inside my Go service
 go/cron	make my long-running program do a nightly cleanup at 03:30 and not pile up when the last pass is still going
 go/tiptap	what my users compose in a WYSIWYG box must stick to permitted formatting before it is stored, and I need to know who got tagged
 go/tiptap	validate rich text editor JSON on the server before saving
+go/keyset	paginate an API list endpoint with a next-page cursor
+go/keyset	my mobile app keeps loading more entries as the user swipes down and no entry may show twice or vanish when new ones arrive
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

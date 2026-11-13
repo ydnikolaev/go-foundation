@@ -1,0 +1,33 @@
+{
+  "id": "keyset",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "page a long list with an opaque cursor safe against inserts",
+  "pairs": [],
+  "keywords": [
+    "pagination",
+    "keyset pagination",
+    "seek pagination",
+    "cursor",
+    "next page",
+    "infinite scroll",
+    "load more",
+    "page token",
+    "opaque cursor",
+    "offset",
+    "feed",
+    "list endpoint",
+    "mobile app scroll",
+    "duplicate entries",
+    "new entries arrive"
+  ],
+  "use_when": [
+    "an API lists rows by time and id and must not repeat or skip one as rows change",
+    "a client needs a next-page token it cannot read or tamper with"
+  ],
+  "not_for": [
+    "jumping to page N or counting all rows: a cursor only moves forward from the last row seen",
+    "authenticating a cursor against forgery: the checksum is unkeyed, so check ownership in the query"
+  ]
+}
