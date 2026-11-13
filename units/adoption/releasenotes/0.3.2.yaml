@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.3.2
-released: unreleased
+released: 2026-11-13
 headline: The unit's card is written as the consumer's task so a caller's own words find it
 changes:
   - id: ADOPTION-0302-1

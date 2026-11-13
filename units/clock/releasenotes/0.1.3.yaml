@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.3
-released: unreleased
+released: 2026-11-13
 headline: The unit's card is written as the consumer's task so a caller's own words find it
 changes:
   - id: CLOCK-0103-1
