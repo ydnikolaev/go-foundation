@@ -17,6 +17,8 @@ go/tiptap	what my users compose in a WYSIWYG box must stick to permitted formatt
 go/tiptap	validate rich text editor JSON on the server before saving
 go/keyset	paginate an API list endpoint with a next-page cursor
 go/keyset	my mobile app keeps loading more entries as the user swipes down and no entry may show twice or vanish when new ones arrive
+go/avatar	let users pick a profile picture from a built-in set
+go/avatar	instead of asking people to upload a photo, offer a handful of ready-made little portraits drawn by code
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

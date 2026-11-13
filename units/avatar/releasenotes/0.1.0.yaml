@@ -1,0 +1,21 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-13
+headline: First release, sixteen generated avatar pictures with frozen bytes, taken from a consumer
+changes:
+  - id: AVATAR-0100-1
+    kind: feat
+    impact: high
+    subject: A fixed set of generated avatars as a shared unit
+    detail: >-
+      Sixteen keys (k-01 to k-16), each a deterministic mirrored 5x5 mosaic SVG drawn from an FNV hash of the key on a
+      fixed palette, with Keys, IsValid, Random and SVG. A test pins the digest of every picture, so a key handed out
+      keeps its picture. Taken from a consumer at its own tested state.
+    affects:
+      - avatar.Keys
+      - avatar.IsValid
+      - avatar.Random
+      - avatar.SVG
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

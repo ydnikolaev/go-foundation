@@ -4,6 +4,7 @@ use (
 	./units/adoption
 	./units/agentdocs
 	./units/alert
+	./units/avatar
 	./units/clock
 	./units/cron
 	./units/keyset

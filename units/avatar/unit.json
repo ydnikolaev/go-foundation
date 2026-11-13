@@ -1,0 +1,33 @@
+{
+  "id": "avatar",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "give users a pick-one set of generated profile pictures",
+  "pairs": [],
+  "keywords": [
+    "avatar",
+    "profile picture",
+    "identicon",
+    "generated image",
+    "default picture",
+    "svg",
+    "placeholder image",
+    "user icon",
+    "pick a picture",
+    "no upload",
+    "deterministic image",
+    "mosaic",
+    "upload a photo",
+    "ready-made portraits",
+    "built-in pictures"
+  ],
+  "use_when": [
+    "users choose a profile picture from a fixed set instead of uploading one",
+    "a picture must stay byte-identical for its key across releases"
+  ],
+  "not_for": [
+    "a picture drawn from any user id or e-mail: the set is 16 fixed keys, and an unknown key returns nil",
+    "raster images or user uploads: the pictures are SVG only"
+  ]
+}
