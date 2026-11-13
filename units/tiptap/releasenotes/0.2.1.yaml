@@ -23,5 +23,8 @@ changes:
       - units/tiptap/manifest.json
       - units/tiptap/testdata/manifest.example.json
     action:
-      scope: local
-      why: A document stored with a link rel, class or target other than _blank now returns ErrNotAllowed; strip those attributes from stored bodies, and from editor output, before Validate.
+      scope: none
+      why: >-
+        No code in a consumer's repository changes, so no command can detect pending work; the work is on stored data.
+        Re-validate stored bodies against Article or Email and strip rel, class and a target other than _blank from
+        their links, or Validate returns ErrNotAllowed for them.
