@@ -8,7 +8,7 @@ doctor row says when the installed copy drifted from the binary.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/agentdocs@v0.2.1
+go get github.com/ydnikolaev/go-foundation/units/agentdocs@v0.2.2
 ```
 
 go-foundation is public (R-6): no GOPRIVATE, no token, no vendoring.

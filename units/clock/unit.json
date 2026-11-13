@@ -3,7 +3,7 @@
   "stack": "go",
   "kind": "primitive",
   "stability": "experimental",
-  "summary": "The time seam: a Clock (Now, After) and a Now-only Nower, the wall-clock Real, and a hand-driven Fake whose timers fire on Advance and Set.",
+  "summary": "test time-dependent code without sleeping",
   "pairs": [],
   "keywords": [
     "fake clock",
@@ -21,9 +21,7 @@
   ],
   "use_when": [
     "a test must control time instead of sleeping",
-    "a unit test must run instantly: advance time by hand instead of pausing for a delay to pass",
-    "code reads the current time or waits and must stay testable",
-    "a component needs a swappable time source (real in production, fake in tests)"
+    "timers and backoff must be deterministic in a test"
   ],
   "not_for": [
     "measuring elapsed time in production: use time.Since",

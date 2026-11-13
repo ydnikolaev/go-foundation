@@ -12,7 +12,7 @@ process.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/alert@v0.1.1
+go get github.com/ydnikolaev/go-foundation/units/alert@v0.1.2
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.

@@ -3,7 +3,7 @@
   "stack": "go",
   "kind": "primitive",
   "stability": "experimental",
-  "summary": "An operational alert seam: events rendered to plain text, deduplicated and paced by an Alerter, sent through a Notifier (Telegram and log adapters), fed by a slog tee.",
+  "summary": "send operational alerts without flooding the channel",
   "pairs": [],
   "keywords": [
     "telegram",
@@ -16,9 +16,8 @@
     "notification"
   ],
   "use_when": [
-    "a service must tell its owner in a chat message that something broke (5xx, recovered panic, failed job)",
-    "error-level log records should become deduplicated, paced alerts through a slog tee",
-    "a producer that is not a log call (crash report, cron tick) must submit an event"
+    "tell the owner in chat that a 5xx, panic or job failed",
+    "dedupe repeated failures and pace messages"
   ],
   "not_for": [
     "metrics, tracing or dashboards: use a metrics or tracing stack",

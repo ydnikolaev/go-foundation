@@ -1,0 +1,17 @@
+schema: foundation/releasenotes/v1
+version: 0.1.2
+released: unreleased
+headline: The unit's card is written as the consumer's task so a caller's own words find it
+changes:
+  - id: ALERT-0102-1
+    kind: change
+    impact: low
+    subject: Card summary and use_when
+    detail: >-
+      The unit's card summary and use_when now state the task a consumer brings, and the index line is shorter. No Go
+      code changed.
+    affects:
+      - units/alert/unit.json
+    action:
+      scope: none
+      why: The change is in the unit's card only and owes the consumer no step.
