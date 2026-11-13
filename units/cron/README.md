@@ -8,7 +8,7 @@ halts the runner. Standard library only.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/cron@v0.1.0
+go get github.com/ydnikolaev/go-foundation/units/cron@v0.1.1
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring.

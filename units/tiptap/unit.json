@@ -3,7 +3,7 @@
   "stack": "go",
   "kind": "primitive",
   "stability": "experimental",
-  "summary": "A validator for rich-text editor JSON (ProseMirror/Tiptap shape): checks a document against an allowlist profile and returns the text length and the mention ids.",
+  "summary": "check rich-text editor JSON on the server against an allowlist",
   "pairs": [],
   "keywords": [
     "tiptap",
@@ -22,10 +22,8 @@
     "tagged users"
   ],
   "use_when": [
-    "a server must validate rich-text editor JSON sent by a client before it saves or renders it",
-    "a document may use only permitted formatting: an allowlist of node types, mark types and attributes (a link must be https, say)",
-    "a post or comment needs a cap on text length, node count and nesting depth",
-    "the users mentioned or tagged in a rich-text body must be collected, for example to notify them"
+    "keep a Tiptap or ProseMirror document to permitted formatting: nodes, marks, attributes",
+    "cap text length, nodes and depth; collect tagged users"
   ],
   "not_for": [
     "HTML sanitizing or escaping: it validates the editor's JSON tree, it does not turn it into HTML",
