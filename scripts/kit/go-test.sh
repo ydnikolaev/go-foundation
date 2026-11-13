@@ -4,7 +4,8 @@
 # Usage:   scripts/kit/go-test.sh          (KIT_CHECK_PATHS: changed paths separated by any whitespace; empty/unset = whole tree)
 #   no paths    `go test ./...` in every go.mod dir of the work tree (the root included)
 #   paths       each changed .go file's package, from its nearest go.mod, deduped; go.mod/go.sum -> that module's ./...;
-#               a package dir that no longer holds a .go file is skipped; a path under testdata/, vendor/, _x or .x
+#               a directory -> every package under it (FB-917; testdata/, vendor/, _x, .x left out), one with no .go
+#               file selects nothing; a package dir that no longer holds a .go file is skipped; a path under testdata/, vendor/, _x or .x
 #               stands for its nearest package above; other paths are not Go's and are ignored; a Go path with no go.mod
 #               above it, when nothing else is selected, fails (exit 1) naming the path
 # Env:     KIT_GO_TEST_FLAGS   extra `go test` flags, word-split (e.g. "-race -count=1")
@@ -62,6 +63,19 @@ has_go_file() {
   return "$found"
 }
 
+# a changed directory (FB-917): the packages under it, each dir holding a .go file, except what `go test ./...` never
+# enters (testdata, vendor, _x, .x); a dir cut by trim_special stands for the package above it, as a file there does
+dir_pkg_dirs() {
+  local d="$1" t
+  t="$(trim_special "$d")"
+  if [ "$t" != "$d" ]; then  # only when the dir itself holds Go: .github or docs/_build with none selects nothing
+    [ -z "$(find "$d" -type f -name '*.go' -print -quit)" ] || printf '%s\n' "$t"
+    return 0
+  fi
+  find "$d" \( -name testdata -o -name vendor -o -name '_*' -o -name '.?*' \) -prune -o -type f -name '*.go' -print |
+    sed -e 's|/[^/]*$||' -e 's|^\./||' | sort -u
+}
+
 whole_mods=""   # module dirs that run ./...
 pkgs=""         # "<module dir>|<package dir>" lines
 mods=""         # every module touched, in first-seen order
@@ -82,6 +96,21 @@ else
   # unquoted on purpose: any whitespace (space, tab, newline) separates paths (globbing is off: set -f)
   # shellcheck disable=SC2086
   for path in $KIT_CHECK_PATHS; do
+    case "$path" in
+      *.go) ;;
+      *)
+        if [ -d "$path" ]; then
+          d="${path%/}"; d="${d#./}"; [ -n "$d" ] || d="."
+          while IFS= read -r pdir; do
+            [ -n "$pdir" ] || continue
+            has_go_file "$pdir" || continue
+            mod="$(nearest_mod "$pdir")" || { note="$note"$'\n'"go-test: $pdir: no go.mod above it, not tested"; unmapped=1; continue; }
+            add_mod "$mod"
+            pkgs="${pkgs:+$pkgs$'\n'}$mod|$pdir"
+          done < <(dir_pkg_dirs "$d")
+          continue
+        fi ;;
+    esac
     case "$path" in
       *.go|*/go.mod|go.mod|*/go.sum|go.sum) ;;
       *) continue ;;
@@ -143,18 +172,16 @@ fi
 
 # FB-638: a floor refusal keeps the refused packages' profiles (a green run keeps nothing). Home: DEVKIT_GATE_COVER_KEEP
 # (devkit gate sets it beside the gate log, outside any queue snapshot worktree, and sweeps it after 7 days); a direct
-# make check has no gate, so a dir under the MAIN checkout's .artifacts/tmp, named kit-go-kept.*, which this script
-# sweeps after 7 days. The cover sweep above takes only kit-go-cover.* and the day-old rule, so neither takes the other's.
+# make check has no gate, so a dir under the run's own checkout's .artifacts/tmp (FB-918: the worktree the run is in, not
+# the main checkout), named kit-go-kept.*, which this script sweeps after 7 days.
+# The cover sweep above takes only kit-go-cover.* and the day-old rule, so neither takes the other's.
 keep_home=""
 if [ "$coverpkg" = 0 ]; then
   if [ -n "${DEVKIT_GATE_COVER_KEEP:-}" ]; then
     keep_home="$DEVKIT_GATE_COVER_KEEP"
   else
-    common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
-    main="$top"
-    case "$common" in */.git) main="${common%/.git}" ;; esac
-    find "$main/.artifacts/tmp" -maxdepth 1 -type d -name 'kit-go-kept.*' -mtime +6 -exec rm -rf {} + 2>/dev/null
-    keep_home="$main/.artifacts/tmp/kit-go-kept.$(date -u +%Y%m%dT%H%M%S).$$"
+    find "$top/.artifacts/tmp" -maxdepth 1 -type d -name 'kit-go-kept.*' -mtime +6 -exec rm -rf {} + 2>/dev/null
+    keep_home="$top/.artifacts/tmp/kit-go-kept.$(date -u +%Y%m%dT%H%M%S).$$"
   fi
 fi
 prof_list=""
