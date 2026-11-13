@@ -3,7 +3,7 @@
   "stack": "go",
   "kind": "primitive",
   "stability": "experimental",
-  "summary": "check rich-text editor JSON on the server against an allowlist",
+  "summary": "check rich-text editor JSON against an allowlist; render it as an email",
   "pairs": [],
   "keywords": [
     "tiptap",
@@ -13,21 +13,22 @@
     "wysiwyg",
     "document validation",
     "allowlist",
-    "sanitize",
     "mention",
-    "user input",
-    "node and mark types",
-    "text length",
     "permitted formatting",
-    "tagged users"
+    "tagged users",
+    "media ids",
+    "image gallery",
+    "email letter",
+    "html email",
+    "node manifest"
   ],
   "use_when": [
-    "keep a Tiptap or ProseMirror document to permitted formatting: nodes, marks, attributes",
-    "cap text length, nodes and depth; collect tagged users"
+    "what users compose in a WYSIWYG box must stick to permitted formatting before it is stored; collect tagged users",
+    "email letter from an article"
   ],
   "not_for": [
-    "HTML sanitizing or escaping: it validates the editor's JSON tree, it does not turn it into HTML",
-    "enforcing the editor's content model: which node may sit inside which, and leaf rules, are not checked yet",
-    "converting a document to Markdown or plain text, or rendering it"
+    "HTML sanitizing or escaping of arbitrary markup: it validates the editor's JSON tree, and its only renderer builds an email letter",
+    "enforcing the editor's content model: which node may sit inside which is not checked; only leaf nodes may not carry content",
+    "converting a document to Markdown, or rendering it as a web page"
   ]
 }

@@ -1,0 +1,80 @@
+schema: foundation/releasenotes/v1
+version: 0.2.0
+released: 2026-11-13
+headline: Profiles from a node manifest, richer attribute rules, media ids and an email letter renderer
+changes:
+  - id: TIPTAP-0200-1
+    kind: feat
+    impact: high
+    subject: Profiles are read from a node manifest, with integer, array and enum rules
+    detail: >-
+      LoadManifest decodes a JSON manifest of named profiles and refuses what the validator would read wrongly or fail
+      open on: an unknown key, an unknown rule type, a pattern that is not RE2, a patternBy naming an attribute the node
+      does not list, an array rule without items, a missing or zero maxNodes or maxDepth, and a min or max of 0. An
+      AttrRule now also takes the types integer and array, and Min, Enum, PatternBy and Items; a NodeRule takes Leaf
+      (content on it is refused) and Transient (attributes that may only be null). Article and Email join Post as
+      profiles of an embedded manifest, NoRuneCap is the maxRunes for a profile with no text cap, and MediaIDs returns
+      the mediaId of every image and gallery item in document order. A Profile built in Go keeps its meaning of 0 as no
+      limit; only the manifest loader refuses it.
+    affects:
+      - tiptap.LoadManifest
+      - tiptap.Manifest
+      - tiptap.Article
+      - tiptap.Email
+      - tiptap.NoRuneCap
+      - tiptap.MediaIDs
+      - tiptap.AttrRule
+      - tiptap.NodeRule
+    action:
+      scope: none
+      why: The change only adds; a caller that uses Post and its own Profile values keeps working.
+  - id: TIPTAP-0200-2
+    kind: feat
+    impact: high
+    subject: RenderEmail turns an Email body into an HTML fragment and a text part
+    detail: >-
+      RenderEmail validates a body against Email and returns a Letter with HTML (a fragment of semantic elements, no
+      style attribute, every text and attribute value escaped) and Text. EmailOptions carries what belongs to the
+      caller: ImageURL for an absolute image address, ArticleURL for the link an image without an address becomes,
+      Labels for its words, ColumnWidth to clamp images, ClassPrefix for class names. The same body and options give
+      byte-identical output. Only http, https and mailto links are emitted, whatever the document says.
+    affects:
+      - tiptap.RenderEmail
+      - tiptap.EmailOptions
+      - tiptap.EmailLabels
+      - tiptap.Letter
+    action:
+      scope: none
+      why: A new function; nothing existing changes.
+  - id: TIPTAP-0200-3
+    kind: change
+    impact: normal
+    subject: Post marks its text, hard break and mention nodes as leaves
+    detail: >-
+      Post is now read from the embedded manifest and its text, hardBreak and mention nodes are leaves, so a content key
+      on one of them is refused where 0.1.x let it through. The unit does not enforce which node may sit inside which;
+      only the leaf rule is checked.
+    affects:
+      - tiptap.Post
+    action:
+      scope: none
+      why: An editor does not put content on a text, hard break or mention node, so a valid document is unaffected.
+  - id: TIPTAP-0200-4
+    kind: change
+    impact: normal
+    subject: The embedded manifest lists no video provider, so Article has no video node
+    detail: >-
+      A video id pattern belongs to the product that embeds the video, so the unit ships none. Article is the article
+      node set without video. To accept video, put a video node with your providers in a manifest of your own and call
+      LoadManifest; testdata/manifest.example.json is a worked example with two made-up providers. A caller that took
+      an earlier copy of this code with a built-in provider list loads its list with LoadManifest and uses that
+      manifest's article profile instead of tiptap.Article; every other name and signature is the same as in that copy.
+      The embedded file is manifest.json, and there is no longer a test that compares Post with a file outside the
+      module.
+    affects:
+      - tiptap.Article
+      - units/tiptap/manifest.json
+      - units/tiptap/testdata/manifest.example.json
+    action:
+      scope: none
+      why: No tagged version had Article; the README section The manifest has the steps for a caller who needs video.

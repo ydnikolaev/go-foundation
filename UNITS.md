@@ -7,4 +7,4 @@
 | clock | primitive | experimental | test time-dependent code without sleeping |
 | cron | primitive | experimental | schedule recurring jobs in a service process |
 | keyset | primitive | experimental | page a long list with an opaque cursor safe against inserts |
-| tiptap | primitive | experimental | check rich-text editor JSON on the server against an allowlist |
+| tiptap | primitive | experimental | check rich-text editor JSON against an allowlist; render it as an email |
