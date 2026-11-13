@@ -1,0 +1,6 @@
+{
+  "type": "doc",
+  "content": [
+    { "type": "paragraph", "content": [{ "type": "mention", "attrs": { "user_id": "bob smith" } }] }
+  ]
+}

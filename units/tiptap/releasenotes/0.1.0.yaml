@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: unreleased
+headline: First release, a validator for rich-text editor JSON (ProseMirror/Tiptap shape) taken from a consumer
+changes:
+  - id: TIPTAP-0100-1
+    kind: feat
+    impact: high
+    subject: The rich-text JSON validator as a shared unit
+    detail: >-
+      Validate checks a ProseMirror/Tiptap document against an allowlist Profile (node and mark types, string attributes
+      with a length and a pattern, a node cap and a depth cap) and returns the text length and the mention ids; Post is
+      one built-in profile. Taken from a consumer at its own tested state. A zero MaxNodes, MaxDepth or attribute Max
+      means no limit, and leaf and content-model rules are not enforced yet.
+    affects:
+      - tiptap.Validate
+      - tiptap.Profile
+      - tiptap.Post
+      - tiptap.ErrNotAllowed
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

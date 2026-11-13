@@ -6,4 +6,5 @@ use (
 	./units/alert
 	./units/clock
 	./units/cron
+	./units/tiptap
 )

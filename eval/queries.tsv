@@ -9,6 +9,8 @@ go/adoption	make my CLI warn which release-note obligations the repository still
 go/adoption	remind users of my command-line program which upgrade chores they still owe after installing a new build
 go/cron	run a job every 10 minutes inside my Go service
 go/cron	make my long-running program do a nightly cleanup at 03:30 and not pile up when the last pass is still going
+go/tiptap	what my users compose in a WYSIWYG box must stick to permitted formatting before it is stored, and I need to know who got tagged
+go/tiptap	validate rich text editor JSON on the server before saving
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

@@ -1,0 +1,17 @@
+{
+  "type": "doc",
+  "content": [
+    {
+      "type": "paragraph",
+      "content": [
+        { "type": "text", "text": "Привет, " },
+        { "type": "mention", "attrs": { "user_id": "u_alice-1" } },
+        { "type": "text", "text": "! 😀" },
+        { "type": "hardBreak" },
+        { "type": "mention", "attrs": { "user_id": "bob" } },
+        { "type": "mention", "attrs": { "user_id": "u_alice-1" } }
+      ]
+    },
+    { "type": "paragraph" }
+  ]
+}
