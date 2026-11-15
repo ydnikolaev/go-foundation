@@ -109,8 +109,8 @@ func (cfg Config) withDefaults() Config {
 // plainErrors is the Reader of a caller that gave none: every error is a plain failure, kept for the next Put.
 type plainErrors struct{}
 
-func (plainErrors) NotModified(error) bool                  { return false }
-func (plainErrors) Refused(error) bool                      { return false }
+func (plainErrors) NotModified(error) bool                { return false }
+func (plainErrors) Refused(error) bool                    { return false }
 func (plainErrors) FloodWait(error) (time.Duration, bool) { return 0, false }
 
 type key struct{ bot, object string }
