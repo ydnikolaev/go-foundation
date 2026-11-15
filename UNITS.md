@@ -6,6 +6,7 @@
 | avatar | primitive | experimental | give users a pick-one set of generated profile pictures |
 | clock | primitive | experimental | test time-dependent code without sleeping |
 | cron | primitive | experimental | schedule recurring jobs in a service process |
+| edit-coalescer | primitive | experimental | send the latest data of each remote object at most once per window |
 | keyset | primitive | experimental | page a long list with an opaque cursor safe against inserts |
 | moderation | primitive | experimental | member reports, hiding, warnings and mutes with an append-only log |
 | tiptap | primitive | experimental | check rich-text editor JSON against an allowlist; render it as an email |

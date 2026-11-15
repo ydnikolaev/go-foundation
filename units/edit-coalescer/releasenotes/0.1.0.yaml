@@ -1,0 +1,24 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-15
+headline: First release, an edit coalescer that sends the latest data of each object once per window, taken from a consumer
+changes:
+  - id: EDIT-COALESCER-0100-1
+    kind: feat
+    impact: high
+    subject: Edit coalescing as a shared unit
+    detail: >-
+      One goroutine per live object waits the window and sends the latest data put (the trailing edge); a sender's
+      rate-limit answer holds that sender's edits back and the edit is retried once; a not-modified answer counts as a
+      success and a refused one drops the entry; Close flushes what waits within a bound. The edit call and the reading
+      of its errors are injected (Editor, Reader) and outcomes come back through Hooks. Taken from a consumer at its own
+      tested state.
+    affects:
+      - editcoalescer.New
+      - editcoalescer.Coalescer
+      - editcoalescer.Editor
+      - editcoalescer.Reader
+      - editcoalescer.Hooks
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

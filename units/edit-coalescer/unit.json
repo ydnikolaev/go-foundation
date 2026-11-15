@@ -1,0 +1,29 @@
+{
+  "id": "edit-coalescer",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "send the latest data of each remote object at most once per window",
+  "pairs": [],
+  "keywords": [
+    "coalesce edits",
+    "debounce updates",
+    "throttle edits",
+    "trailing edge",
+    "rate limit",
+    "edit a sent message",
+    "streaming updates",
+    "latest value wins",
+    "flood wait",
+    "flush on shutdown"
+  ],
+  "use_when": [
+    "one object changes many times a second but the remote allows one edit per window",
+    "a rate-limit answer must hold a sender's edits back"
+  ],
+  "not_for": [
+    "queues that must deliver every message: the latest data of an object wins and the earlier ones are dropped",
+    "the remote call itself or the meaning of its errors: the host binds the Editor and Reader ports",
+    "retrying failed edits for long: only a rate limit is retried, once"
+  ]
+}
