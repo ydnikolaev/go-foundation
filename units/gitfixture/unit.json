@@ -1,0 +1,33 @@
+{
+  "id": "gitfixture",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "stop Go tests that run git from failing at cleanup, and fail the build on a raw git spawn",
+  "pairs": [],
+  "keywords": [
+    "git",
+    "gc auto",
+    "temp dir cleanup",
+    "directory not empty",
+    "unlinkat",
+    "flaky test",
+    "teardown race",
+    "git maintenance",
+    "test hygiene",
+    "exec command",
+    "git environment",
+    "fixture repo",
+    "scratch folder",
+    "background gc",
+    "repository repacked"
+  ],
+  "use_when": [
+    "test temp dir cleanup fails with directory not empty after running git",
+    "a tree must be scanned for unguarded git spawns"
+  ],
+  "not_for": [
+    "running git in production or a git client library: it only hardens spawns made under test",
+    "faking a git server: use a real repository in a temp dir"
+  ]
+}
