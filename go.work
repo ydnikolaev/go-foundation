@@ -10,5 +10,6 @@ use (
 	./units/gitfixture
 	./units/keyset
 	./units/moderation
+	./units/testdb
 	./units/tiptap
 )

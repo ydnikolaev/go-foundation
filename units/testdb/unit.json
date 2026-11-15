@@ -1,0 +1,33 @@
+{
+  "id": "testdb",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "give each Go database test its own Postgres database, copied from a template built once",
+  "pairs": [],
+  "keywords": [
+    "test database",
+    "postgres",
+    "database per test",
+    "template database",
+    "create database template",
+    "parallel tests",
+    "integration test",
+    "isolated database",
+    "shared test server",
+    "worktree",
+    "fixture",
+    "migrations once",
+    "tables clash",
+    "private schema copy",
+    "clone schema"
+  ],
+  "use_when": [
+    "parallel tests each need their own clean database",
+    "several worktrees share one test Postgres"
+  ],
+  "not_for": [
+    "running migrations or owning a schema: pass your own Migrate function",
+    "a database other than Postgres 15 or newer: the copy is CREATE DATABASE with STRATEGY FILE_COPY"
+  ]
+}
