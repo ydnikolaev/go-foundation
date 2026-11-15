@@ -156,3 +156,78 @@ func TestQuoting(t *testing.T) {
 		t.Fatalf("literal = %s", got)
 	}
 }
+
+// A pinned set of v0.1.0 names: an empty Namespace must keep producing them byte for byte.
+func TestScope_UnsetKeepsV010Names(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	pkg := filepath.Join(root, "pkg")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "go.mod"), []byte("module m\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := scope("", pkg), namespace(pkg); got != want {
+		t.Fatalf("unset scope = %q, want the module-root hash %q", got, want)
+	}
+	if got, want := templateKey("", pkg), pkg; got != want {
+		t.Fatalf("unset template key = %q, want the package directory %q", got, want)
+	}
+	if got, want := templateName(templateKey("", pkg), "0123456789ab"), "tmpl_"+hash(pkg)[:8]+"_0123456789ab"; got != want {
+		t.Fatalf("unset template = %q, want %q", got, want)
+	}
+	if got, want := testName(scope("", pkg), pkg, "TestX", 0), "t_"+hash(root)[:8]+"_"+hash(pkg, "TestX")[:16]; got != want {
+		t.Fatalf("unset test database = %q, want %q", got, want)
+	}
+}
+
+// Two checkouts whose go.mod sits at one path (every container at /src) differ only by Namespace.
+func TestNamespaceSeparatesNames(t *testing.T) {
+	t.Parallel()
+	pkg := "/src/internal/store"
+	const dig = "0123456789ab"
+	longNS := strings.Repeat("ns-with-a-long-name/ünïcode ", 50)
+	namespaces := []string{"", "a", "b", "wt-1", longNS, "a ", "x'\"y"}
+
+	tests, tmpls := map[string]string{}, map[string]string{}
+	for _, ns := range namespaces {
+		tn := testName(scope(ns, pkg), pkg, "TestOrders", 0)
+		tp := templateName(templateKey(ns, pkg), dig)
+		for _, n := range []string{tn, tp} {
+			if len(n) > maxName {
+				t.Errorf("namespace %q: %q is %d bytes, over %d", ns, n, len(n), maxName)
+			}
+			if strings.Trim(n, "abcdefghijklmnopqrstuvwxyz0123456789_") != "" {
+				t.Errorf("namespace %q: %q holds a character beyond lower hex and underscore", ns, n)
+			}
+		}
+		if !strings.HasPrefix(tn, "t_") || !strings.HasPrefix(tp, "tmpl_") || !strings.HasSuffix(tp, "_"+dig) {
+			t.Errorf("namespace %q: shapes %q %q", ns, tn, tp)
+		}
+		if !strings.HasPrefix(tp, templateFamily(templateKey(ns, pkg))) {
+			t.Errorf("namespace %q: template %q is outside its family", ns, tp)
+		}
+		if prev, dup := tests[tn]; dup {
+			t.Errorf("namespaces %q and %q share the test database %q", prev, ns, tn)
+		}
+		if prev, dup := tmpls[tp]; dup {
+			t.Errorf("namespaces %q and %q share the template %q", prev, ns, tp)
+		}
+		tests[tn], tmpls[tp] = ns, ns
+	}
+	// A family of one namespace never matches the template of another: the prune only ever sees its own.
+	for _, a := range namespaces {
+		for _, b := range namespaces {
+			if a != b && strings.HasPrefix(templateName(templateKey(b, pkg), dig), templateFamily(templateKey(a, pkg))) {
+				t.Errorf("template of namespace %q is in the family of %q", b, a)
+			}
+		}
+	}
+	if scope("a", pkg) != scope("a", "/other/pkg") {
+		t.Error("a set namespace still depends on the directory: it must replace the module-root hash")
+	}
+	if len(scope("a", pkg)) != 8 {
+		t.Errorf("scope %q is not 8 hex", scope("a", pkg))
+	}
+}

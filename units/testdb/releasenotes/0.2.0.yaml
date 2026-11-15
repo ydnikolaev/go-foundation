@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.2.0
+released: 2026-11-15
+headline: An optional Config.Namespace keeps two checkouts that build at one path from sharing databases and templates
+changes:
+  - id: TESTDB-0200-1
+    kind: feat
+    impact: normal
+    subject: Config.Namespace separates checkouts whose module root is the same path
+    detail: >-
+      Names hashed the module root and the package directory, so checkouts that build at one path (every container
+      at /src) shared them on one Postgres: one dropped the other's t_ databases and idle templates. Namespace, when
+      set, replaces the module-root hash in a test database's name and is mixed into the template's hash of the
+      package directory, so neither collides across namespaces; the stale-template cleanup and the leftover drop touch
+      only names of their own namespace. It is hashed, so any string is valid and names stay within 63 bytes. Empty
+      keeps the v0.1.0 names byte for byte. The unit reads no environment variable for it: the consumer reads its own
+      where it builds the Config.
+    affects:
+      - testdb.Config
+    action:
+      scope: none
+      why: Additive and optional; an empty Namespace changes nothing. Set it only where checkouts share a module path and a server.

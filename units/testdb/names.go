@@ -38,6 +38,26 @@ func hash(parts ...string) string {
 // differ per worktree and put the worktree into the test cache key.
 func namespace(dir string) string { return hash(moduleRoot(dir))[:8] }
 
+// scope is the 8 hex that leads a test database's name: the hash of the module root of dir when ns is empty (the
+// v0.1.0 name), else the hash of ns itself. A set namespace replaces the module root, so two checkouts whose go.mod
+// sits at one path (a container's /src) still differ. ns is hashed, never embedded, so any string is valid and the
+// name keeps its length.
+func scope(ns, dir string) string {
+	if ns == "" {
+		return namespace(dir)
+	}
+	return hash("testdb-namespace", ns)[:8]
+}
+
+// templateKey is what a package's template name hashes: the package directory when ns is empty (the v0.1.0 name),
+// else ns and the directory together, so two namespaces never share a template or a prune family.
+func templateKey(ns, pkg string) string {
+	if ns == "" {
+		return pkg
+	}
+	return "testdb-namespace\x00" + ns + "\x00" + pkg
+}
+
 // moduleRoot is the nearest directory at or above dir that holds a go.mod; dir itself when there is none.
 func moduleRoot(dir string) string {
 	for d := dir; ; {
@@ -79,11 +99,11 @@ func digest(migrations fs.FS) (string, error) {
 	return hex.EncodeToString(h.Sum(nil))[:12], nil
 }
 
-// templateFamily is the part of a template's name shared by every migration digest of one package; pkg is the
-// package's directory, the working directory of its tests.
-func templateFamily(pkg string) string { return templatePrefix + hash(pkg)[:8] + "_" }
+// templateFamily is the part of a template's name shared by every migration digest of one package; key is
+// templateKey of the package's directory (the working directory of its tests) and the Namespace.
+func templateFamily(key string) string { return templatePrefix + hash(key)[:8] + "_" }
 
-func templateName(pkg, digest12 string) string { return templateFamily(pkg) + digest12 }
+func templateName(key, digest12 string) string { return templateFamily(key) + digest12 }
 
 // testName is the database of one New call: t_<ns>_<16 hex of the package and the test>. The nth call (n > 0) of one
 // test in one process gets its own name, so the second never drops the first's database.

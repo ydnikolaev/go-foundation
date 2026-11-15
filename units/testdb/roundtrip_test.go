@@ -235,6 +235,56 @@ func TestRoundTrip_TwoNamespacesAtOnce(t *testing.T) {
 	}
 }
 
+// Two checkouts that build at one path (every container at /src) share the module root and the package directory;
+// their Namespaces alone keep them apart: two databases at once for one test name, two templates, and a prune of one
+// never drops the other's template, whatever its migration set.
+func TestRoundTrip_TwoConfigNamespacesOnOneDir(t *testing.T) {
+	raw := adminURL(t)
+	admin := openDB(t, raw)
+	dir := checkout(t)
+	var built atomic.Int64
+	cfgA, cfgB := seedConfig(nonce(t), &built), seedConfig(nonce(t), &built)
+	cfgA.Namespace, cfgB.Namespace = "checkout-a", "checkout-b"
+	dA, _ := digest(cfgA.Migrations)
+	dB, _ := digest(cfgB.Migrations)
+	tmplA, tmplB := templateName(templateKey(cfgA.Namespace, dir), dA), templateName(templateKey(cfgB.Namespace, dir), dB)
+	dropAtEnd(t, admin, tmplA, tmplB)
+
+	dsnA := create(t, cfgA, inDir(dir))
+	dsnB := create(t, cfgB, inDir(dir)) // same dir: only the namespace differs
+	if a, b := dbName(t, dsnA), dbName(t, dsnB); a == b {
+		t.Fatalf("both checkouts got database %s", a)
+	}
+	for _, dsn := range []string{dsnA, dsnB} {
+		if got := scalar(t, openDB(t, dsn), "SELECT count(*) FROM seed"); got != "1" {
+			t.Errorf("%s: rows = %s, want the seed", dbName(t, dsn), got)
+		}
+	}
+	if !exists(t, admin, tmplA) || !exists(t, admin, tmplB) {
+		t.Errorf("a template is missing: A %v, B %v", exists(t, admin, tmplA), exists(t, admin, tmplB))
+	}
+	if built.Load() != 2 {
+		t.Errorf("Migrate ran %d times for two namespaces, want 2: one template each", built.Load())
+	}
+
+	// B's new migration set prunes B's stale template, and A's template stays.
+	orphanB := templateFamily(templateKey(cfgB.Namespace, dir)) + "orphan000001"
+	if _, err := admin.Exec("CREATE DATABASE " + quote(orphanB)); err != nil {
+		t.Fatal(err)
+	}
+	cfgB2 := seedConfig(nonce(t), &built)
+	cfgB2.Namespace = cfgB.Namespace
+	dB2, _ := digest(cfgB2.Migrations)
+	dropAtEnd(t, admin, orphanB, templateName(templateKey(cfgB2.Namespace, dir), dB2))
+	create(t, cfgB2, inDir(dir))
+	if exists(t, admin, orphanB) {
+		t.Error("a stale template of namespace B was not dropped")
+	}
+	if !exists(t, admin, tmplA) {
+		t.Error("a prune in namespace B dropped namespace A's template")
+	}
+}
+
 // A stale template of the package is dropped, one a session holds is not, and neither is the one this process uses.
 // A leftover database of a test's own name is replaced by a fresh copy.
 func TestRoundTrip_PruneAndLeftover(t *testing.T) {

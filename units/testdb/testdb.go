@@ -14,7 +14,9 @@
 // Names are scoped so checkouts of one repo share one server without touching each other: a template is
 // tmpl_<8 hex of the package directory>_<12 hex of the migrations>, a test's database is t_<8 hex of the module
 // root>_<16 hex of the package and the test>, each at most 63 bytes. The module root comes from the working directory,
-// in process, so a worktree needs no environment variable.
+// in process, so a worktree needs no environment variable. Checkouts that build at one path (containers at /src) set
+// Config.Namespace: the 8 hex of a test database becomes the hash of the namespace, and the 8 hex of a template the
+// hash of the namespace and the package directory.
 //
 // A killed run can leave databases behind; the next run of the same test drops its own, and nothing sweeps the rest.
 //
@@ -56,6 +58,13 @@ type Config struct {
 	// and must close every connection it opens before it returns: Postgres refuses to copy a database that has a
 	// session. Nil leaves the template empty.
 	Migrate func(ctx context.Context, dsn string) error
+	// Namespace tells checkouts apart when their module roots do not: two checkouts that build at one path (every
+	// container at /src) share the hash of the module root, so one would drop the other's databases and templates.
+	// Give each checkout its own string (its branch, a run id, a container name). Empty keeps the module-root names
+	// of v0.1.0. Set, it replaces the module-root hash in a test database's name and is mixed into the template's;
+	// it is hashed, so any string is valid. The package reads no environment variable for it: read yours where you
+	// build the Config, so the value is in your own cache key by your choice.
+	Namespace string
 }
 
 // New returns the DSN of a fresh database for t, copied from the template of t's package and cfg, and drops it when
@@ -112,7 +121,7 @@ func create(t testing.TB, cfg Config, e env) string {
 		t.Fatalf("testdb: template: %s", redact(err.Error(), raw))
 		return ""
 	}
-	name := testName(namespace(pkg), pkg, t.Name(), nextCall(pkg, t.Name()))
+	name := testName(scope(cfg.Namespace, pkg), pkg, t.Name(), nextCall(pkg, t.Name()))
 	if err := cloneInto(ctx, admin, tmpl, name); err != nil {
 		t.Fatalf("testdb: create database %s from %s: %s", name, tmpl, redact(err.Error(), raw))
 		return ""

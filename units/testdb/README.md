@@ -9,7 +9,7 @@ driver and supply your own `Migrate`.
 ## Install
 
 ```sh
-go get github.com/ydnikolaev/go-foundation/units/testdb@v0.1.0
+go get github.com/ydnikolaev/go-foundation/units/testdb@v0.2.0
 ```
 
 go-foundation is public: no GOPRIVATE, no token, no vendoring. The test server is Postgres 15 or newer (the copy needs
@@ -35,11 +35,32 @@ go-foundation is public: no GOPRIVATE, no token, no vendoring. The test server i
 | `Config.Driver` | the `database/sql` driver name you registered | `pgx` |
 | `Config.Migrations` | files read only for the template's digest: a changed name or byte builds a new template | empty |
 | `Config.Migrate` | applies the schema to the template database given by its DSN, once per template | none, an empty template |
+| `Config.Namespace` | tells checkouts apart when their module roots do not (see below) | empty: the module root decides |
 
 Names are fixed: a template is `tmpl_<8 hex of the package directory>_<12 hex of the migrations>`, a test's database is
 `t_<8 hex of the module root>_<16 hex of the package and the test>`, each at most 63 bytes. The module root is the
 nearest `go.mod` above the working directory, found in process, so a worktree needs no environment variable (an
 environment variable would put the worktree into `go test`'s cache key).
+
+Checkouts whose `go.mod` sits at the same path share those hashes: every checkout's container builds at one `WORKDIR`
+(say `/src`), so two of them on one Postgres would drop each other's `t_` databases and idle templates. Set
+`Config.Namespace` to a string that is unique per checkout (its branch, a run id, a container name):
+
+```go
+var cfg = testdb.Config{
+	Migrations: migrations,
+	Migrate:    migrate,
+	Namespace:  os.Getenv("CHECKOUT_ID"), // read your own variable here; the unit reads none
+}
+```
+
+Empty keeps the names above, byte for byte. Set, the namespace replaces the module-root hash in a test database's name
+(`t_<8 hex of the namespace>_<16 hex of the package and the test>`) and is mixed into the template's
+(`tmpl_<8 hex of the namespace and the package directory>_<12 hex of the migrations>`). It is hashed, never embedded:
+any string is valid and a name keeps its length. The unit reads no environment variable for it; read yours where you
+build the `Config`, so the value joins your own cache key by your choice. The cleanup that drops stale templates and a
+test's leftover database only touches names of its own namespace. Two checkouts that share a namespace share
+databases: give each its own.
 
 ## API
 
@@ -59,6 +80,13 @@ type Config struct {
 	// and must close every connection it opens before it returns: Postgres refuses to copy a database that has a
 	// session. Nil leaves the template empty.
 	Migrate func(ctx context.Context, dsn string) error
+	// Namespace tells checkouts apart when their module roots do not: two checkouts that build at one path (every
+	// container at /src) share the hash of the module root, so one would drop the other's databases and templates.
+	// Give each checkout its own string (its branch, a run id, a container name). Empty keeps the module-root names
+	// of v0.1.0. Set, it replaces the module-root hash in a test database's name and is mixed into the template's;
+	// it is hashed, so any string is valid. The package reads no environment variable for it: read yours where you
+	// build the Config, so the value is in your own cache key by your choice.
+	Namespace string
 }
 ```
 

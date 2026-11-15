@@ -30,7 +30,7 @@ func ensureTemplate(ctx context.Context, admin *sql.DB, s tmplSpec) (string, err
 	if err != nil {
 		return "", fmt.Errorf("read migrations: %w", err)
 	}
-	name := templateName(s.pkg, d)
+	name := templateName(templateKey(s.cfg.Namespace, s.pkg), d)
 
 	templateMu.Lock()
 	defer templateMu.Unlock()
@@ -103,11 +103,11 @@ func inspect(ctx context.Context, conn *sql.Conn, name string) (exists bool, com
 	return true, c.String, nil
 }
 
-// pruneStale drops the other templates of this package: those of older migration digests are dead weight. A template
+// pruneStale drops the other templates of this package in this Namespace (the family carries both): those of older migration digests are dead weight. A template
 // this process has built or used stays (one package may use several migration sets), and one a session still holds
 // stays too, because the drop is refused; neither is an error. The caller holds templateMu.
 func pruneStale(ctx context.Context, admin *sql.DB, s tmplSpec, keep string) {
-	family := templateFamily(s.pkg)
+	family := templateFamily(templateKey(s.cfg.Namespace, s.pkg))
 	rows, err := admin.QueryContext(ctx,
 		"SELECT datname FROM pg_database WHERE left(datname, "+fmt.Sprint(len(family))+") = "+literal(family))
 	if err != nil {
