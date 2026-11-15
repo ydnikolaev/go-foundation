@@ -1,0 +1,40 @@
+schema: foundation/releasenotes/v1
+version: 0.2.0
+released: 2026-11-15
+headline: A test's git can no longer discover the repository above its fixture, and Env hardens one spawn without the process environment
+changes:
+  - id: GITFIXTURE-0200-1
+    kind: fix
+    impact: high
+    subject: HardenEnv sets GIT_CEILING_DIRECTORIES so a fixture cannot reach the enclosing repository
+    detail: >-
+      A fixture directory with no .git of its own under a real work tree (a go tmp dir kept inside the main checkout)
+      made git climb out of it, discover the enclosing repository and write into it. HardenEnv now also sets
+      GIT_CEILING_DIRECTORIES to the symlink-resolved top of the work tree that holds the test's working directory (found
+      by walking up for .git, no git spawned) and os.TempDir(). A fixture's own git init keeps working. A preset ceiling
+      is kept and ours are appended, each once, so a second call changes nothing.
+    affects:
+      - gitfixture.HardenEnv
+    action:
+      scope: local
+      why: >-
+        Behaviour change. A test that deliberately ran git in its package directory against the enclosing repository no
+        longer finds it and now fails; give it a fixture repo of its own, or run that one git with
+        GIT_CEILING_DIRECTORIES emptied. A test that only used its own git init fixture needs nothing.
+      detect:
+        - git grep -q 'gitfixture\.HardenEnv' -- '*.go'
+  - id: GITFIXTURE-0200-2
+    kind: feat
+    impact: normal
+    subject: Env returns a hardened environment slice for one spawn, safe under t.Parallel
+    detail: >-
+      Env(base) returns a fresh slice of base plus the maintenance-off GIT_CONFIG_* entries (composed with a count already
+      in base), the same GIT_CEILING_DIRECTORIES rule, GIT_CONFIG_GLOBAL=/dev/null, GIT_CONFIG_NOSYSTEM=1 and a fixed
+      GIT_AUTHOR_* and GIT_COMMITTER_* identity, so a commit needs no user config. It never touches base or the process
+      environment, so a t.Parallel test sets cmd.Env = gitfixture.Env(os.Environ()) per spawn instead of copying the helper.
+      HardenEnv does not gain the global-config and identity isolation: it covers production code under test.
+    affects:
+      - gitfixture.Env
+    action:
+      scope: none
+      why: Additive; a test that keeps its own per-command environment helper may replace it with Env, and nothing breaks if it does not.

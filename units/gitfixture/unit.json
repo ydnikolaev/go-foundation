@@ -3,7 +3,7 @@
   "stack": "go",
   "kind": "primitive",
   "stability": "experimental",
-  "summary": "stop Go tests that run git from failing at cleanup, and fail the build on a raw git spawn",
+  "summary": "stop Go tests running git from failing at cleanup, and fail the build on a raw git spawn",
   "pairs": [],
   "keywords": [
     "git",
@@ -18,13 +18,14 @@
     "exec command",
     "git environment",
     "fixture repo",
-    "scratch folder",
-    "background gc",
-    "repository repacked"
+    "git ceiling directories",
+    "fixture finds enclosing repo",
+    "parallel test git env"
   ],
   "use_when": [
-    "test temp dir cleanup fails with directory not empty after running git",
-    "a tree must be scanned for unguarded git spawns"
+    "temp dir cleanup fails: directory not empty after git",
+    "scan for raw git spawns",
+    "fixture dir finds the enclosing git repo"
   ],
   "not_for": [
     "running git in production or a git client library: it only hardens spawns made under test",
