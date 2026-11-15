@@ -1,0 +1,21 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-15
+headline: First release, a test's git spawns die with the test, and a scan that fails on a raw git spawn
+changes:
+  - id: GITFIXTURE-0100-1
+    kind: feat
+    impact: high
+    subject: Git spawns hardened against the teardown race
+    detail: >-
+      Args puts the flags that turn git's background maintenance off before a subcommand, HardenEnv sets the same
+      through GIT_CONFIG_COUNT and its KEY and VALUE entries on top of any preset count (idempotent), so a git spawned by
+      the code under test dies with the test, and Hygiene scans a tree and fails on each exec.Command or
+      exec.CommandContext of git that is not routed through Args and not allowed.
+    affects:
+      - gitfixture.Args
+      - gitfixture.HardenEnv
+      - gitfixture.Hygiene
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

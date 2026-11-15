@@ -1,0 +1,21 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-15
+headline: First release, a Postgres database per test copied from a template built once per package and migration set
+changes:
+  - id: TESTDB-0100-1
+    kind: feat
+    impact: high
+    subject: A database per test from a template
+    detail: >-
+      New returns the DSN of a database of the test's own, created with CREATE DATABASE ... TEMPLATE ... STRATEGY
+      FILE_COPY from a template built once per package and migration digest under an advisory lock, and dropped at
+      Cleanup. Names are scoped by the module root so worktrees share one server. Under -short it skips before any
+      environment read; an unset or unreachable TESTDB_URL fails the test, naming the DSN with the password masked.
+      Standard library only: the consumer registers its own database/sql driver and supplies Migrate.
+    affects:
+      - testdb.New
+      - testdb.Config
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

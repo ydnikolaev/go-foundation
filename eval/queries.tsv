@@ -23,6 +23,10 @@ go/moderation	users report a post in my forum and a moderator can hide it or tem
 go/moderation	let people on my forum flag abusive comments, silence repeat offenders for a while, and keep a record of every decision
 go/edit-coalescer	coalesce rapid edits to one chat message so the API rate limit is not hit
 go/edit-coalescer	streaming reply into chat keeps tripping flood wait because that message gets modified too frequently
+go/testdb	every integration test should get its own Postgres database in Go
+go/testdb	parallel suites keep overwriting each other's tables on the shared server, so each case needs a private copy of the schema that is cloned instead of migrated again
+go/gitfixture	my Go tests that run git fail with unlinkat directory not empty when the temp dir is removed
+go/gitfixture	scratch folder removal randomly errors, repository still repacking behind scenes
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address
