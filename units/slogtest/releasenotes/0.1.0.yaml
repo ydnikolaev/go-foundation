@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.0
-released: unreleased
+released: 2026-11-16
 headline: First release, test helpers that capture the default slog logger and decode its JSON lines, taken from a consumer
 changes:
   - id: SLOGTEST-0100-1
