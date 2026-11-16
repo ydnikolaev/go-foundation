@@ -1,0 +1,23 @@
+{
+  "id": "comments",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "rules of a one-level comment thread: reply attach, edit window, content caps, honeypot, delete to stub, added mentions",
+  "keywords": [
+    "comment thread rules",
+    "one level replies",
+    "edit window",
+    "deleted comment stub",
+    "honeypot spam field",
+    "new mentions on edit"
+  ],
+  "use_when": [
+    "a comment thread is one level deep and a deleted comment with replies must leave a stub"
+  ],
+  "not_for": [
+    "storage, queries or access rules: the caller owns them and implements the Store port",
+    "nested threads deeper than one level"
+  ],
+  "pairs": []
+}

@@ -6,6 +6,7 @@ use (
 	./units/alert
 	./units/avatar
 	./units/clock
+	./units/comments
 	./units/cron
 	./units/edit-coalescer
 	./units/gitfixture

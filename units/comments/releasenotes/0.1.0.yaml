@@ -1,0 +1,29 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-16
+headline: First release, the rules of a one-level comment thread with no storage of their own, taken from a consumer
+changes:
+  - id: COMMENTS-0100-1
+    kind: feat
+    impact: high
+    subject: One-level comment thread rules as a shared unit
+    detail: >-
+      Attach and ReplyTo give the parent a reply is stored under, so a thread is never deeper than one level; CheckEdit
+      applies the edit window; CheckContent applies the photo cap and refuses an empty comment; Honeypot flags the hidden
+      form field; Added lists the mentions an edit adds; Delete turns a comment with replies into a stub, else removes it
+      and a stub parent left with no reply. Storage is the caller's, through the Store port. Taken from a consumer at its
+      own tested state.
+    affects:
+      - comments.Comment
+      - comments.Store
+      - comments.Attach
+      - comments.ReplyTo
+      - comments.CheckEdit
+      - comments.CheckContent
+      - comments.Honeypot
+      - comments.Added
+      - comments.Delete
+      - comments.Deletion
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

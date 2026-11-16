@@ -31,6 +31,8 @@ go/slogtest	assert on what my Go code logged through slog by capturing the defau
 go/slogtest	verify my service emitted a given warning with the right attributes by reading back what it wrote to a buffer, filtered by message
 go/telegram-fake	test my Telegram bot code against a fake Bot API server that records the calls
 go/telegram-fake	exercise my chat messenger client offline against a local imitation and afterwards inspect which endpoints it hit and with what payloads
+go/comments	rules for a one-level comment thread where a reply to a reply attaches to the top comment and a deleted comment with replies leaves a stub
+go/comments	let readers respond to a post with answers that never nest more than a single layer, and when someone removes a message others responded to, leave a placeholder so the conversation stays intact
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address
