@@ -11,5 +11,6 @@
 | keyset | primitive | experimental | page a long list with an opaque cursor safe against inserts |
 | moderation | primitive | experimental | member reports, hiding, warnings and mutes with an append-only log |
 | slogtest | primitive | experimental | capture the default slog logger in a test and decode its JSON lines |
+| telegram-fake | primitive | experimental | fake Telegram Bot API over HTTP for tests: keeps each call's path and body, answers with one reply you set |
 | testdb | primitive | experimental | give each Go database test its own Postgres database, copied from a template built once |
 | tiptap | primitive | experimental | check rich-text editor JSON against an allowlist; render it as an email |
