@@ -1,0 +1,22 @@
+{
+  "id": "reactions",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "one-per-user reaction rules on a target: idempotent put and remove, each answering the count and whether the user's is in it",
+  "keywords": [
+    "like button",
+    "heart reaction",
+    "one reaction per user",
+    "idempotent toggle",
+    "reaction count and mine"
+  ],
+  "use_when": [
+    "a post or comment takes one heart per user and the answer is count plus mine"
+  ],
+  "not_for": [
+    "storage, queries or who may react: the caller owns them and implements the Store port",
+    "several reaction kinds per user on one target"
+  ],
+  "pairs": []
+}

@@ -12,6 +12,7 @@ use (
 	./units/gitfixture
 	./units/keyset
 	./units/moderation
+	./units/reactions
 	./units/slogtest
 	./units/telegram-fake
 	./units/testdb

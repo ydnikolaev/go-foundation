@@ -1,0 +1,23 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-16
+headline: First release, the rules of a one-per-user reaction on a target with no storage of their own, taken from a consumer
+changes:
+  - id: REACTIONS-0100-1
+    kind: feat
+    impact: high
+    subject: One-per-user reaction rules as a shared unit
+    detail: >-
+      Put gives a user's reaction to a target once however often it is called; Remove takes it back if it is there; each
+      answers the target's State, its Count and whether the user's reaction is in it. An invalid target or a missing user
+      is refused before the Store is touched. Storage is the caller's, through the Store port. Taken from a consumer at its
+      own tested state.
+    affects:
+      - reactions.Target
+      - reactions.State
+      - reactions.Store
+      - reactions.Put
+      - reactions.Remove
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

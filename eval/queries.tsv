@@ -33,6 +33,8 @@ go/telegram-fake	test my Telegram bot code against a fake Bot API server that re
 go/telegram-fake	exercise my chat messenger client offline against a local imitation and afterwards inspect which endpoints it hit and with what payloads
 go/comments	rules for a one-level comment thread where a reply to a reply attaches to the top comment and a deleted comment with replies leaves a stub
 go/comments	let readers respond to a post with answers that never nest more than a single layer, and when someone removes a message others responded to, leave a placeholder so the conversation stays intact
+go/reactions	one heart per user on a post or comment, put and remove are idempotent and answer the count and whether mine is set
+go/reactions	let people like a post exactly once and let them undo it, showing the tally plus their own status
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address
