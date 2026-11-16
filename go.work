@@ -13,6 +13,7 @@ use (
 	./units/keyset
 	./units/moderation
 	./units/reactions
+	./units/safehttp
 	./units/slogtest
 	./units/telegram-fake
 	./units/testdb

@@ -1,0 +1,26 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-16
+headline: First release, an SSRF-safe HTTP client for URLs a caller does not control, taken from a consumer
+changes:
+  - id: SAFEHTTP-0100-1
+    kind: feat
+    impact: high
+    subject: SSRF-safe HTTP client as a shared unit
+    detail: >-
+      New returns a Client whose every connection resolves its host once, refuses the dial when any resolved address is
+      private, loopback, link-local, a cloud metadata address or otherwise not public, and dials the checked address
+      itself. A redirect hop is checked again and capped, the response body is capped (ErrBodyTooLarge), and the client
+      has its own timeout. Blocked answers whether one address is public. Taken from a consumer at its own tested state.
+    affects:
+      - safehttp.New
+      - safehttp.Options
+      - safehttp.Client
+      - safehttp.Blocked
+      - safehttp.StatusError
+      - safehttp.ErrBlocked
+      - safehttp.ErrBodyTooLarge
+      - safehttp.ErrTooManyRedirects
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

@@ -1,0 +1,22 @@
+{
+  "id": "safehttp",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "HTTP client for URLs you do not control: refuses private, loopback and metadata addresses, caps body and redirects, one lookup per dial",
+  "keywords": [
+    "ssrf protection",
+    "fetch untrusted url",
+    "block internal addresses",
+    "feed fetcher",
+    "dns rebinding"
+  ],
+  "use_when": [
+    "code fetches a URL that a user, a source or a feed supplied"
+  ],
+  "not_for": [
+    "calls to hosts you control inside your own network: the check refuses them unless AllowHosts lists them",
+    "long calls such as a language model: the default timeout is 10 s, so build another client"
+  ],
+  "pairs": []
+}

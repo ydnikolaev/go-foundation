@@ -37,6 +37,8 @@ go/reactions	one heart per user on a post or comment, put and remove are idempot
 go/reactions	let people like a post exactly once and let them undo it, showing the tally plus their own status
 go/tplfields	which fields does a Go text/template or html/template read, as dotted key paths from the parse tree
 go/tplfields	variables an HTML or text one uses, known before rendering
+go/safehttp	fetch an untrusted url from my Go service without letting it reach internal addresses, ssrf protection
+go/safehttp	fetch an untrusted link without reaching the internal network
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address
