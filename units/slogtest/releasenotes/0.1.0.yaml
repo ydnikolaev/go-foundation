@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: unreleased
+headline: First release, test helpers that capture the default slog logger and decode its JSON lines, taken from a consumer
+changes:
+  - id: SLOGTEST-0100-1
+    kind: feat
+    impact: high
+    subject: Log capture for tests as a shared unit
+    detail: >-
+      CaptureLog routes the default slog logger into a text buffer with the time dropped; CaptureJSONLog routes it into
+      a JSON buffer; JSONLines decodes each line and fails the test on a line that is not JSON; WithMsg keeps the lines
+      of one message. The default logger is restored when the test ends. Taken from a consumer at its own tested state.
+    affects:
+      - slogtest.CaptureLog
+      - slogtest.CaptureJSONLog
+      - slogtest.JSONLines
+      - slogtest.WithMsg
+      - slogtest.LogLine
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

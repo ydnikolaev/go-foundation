@@ -11,6 +11,7 @@ use (
 	./units/gitfixture
 	./units/keyset
 	./units/moderation
+	./units/slogtest
 	./units/testdb
 	./units/tiptap
 )

@@ -1,0 +1,25 @@
+{
+  "id": "slogtest",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "capture the default slog logger in a test and decode its JSON lines",
+  "pairs": [],
+  "keywords": [
+    "capture logs in tests",
+    "slog test helper",
+    "assert on log output",
+    "json log lines",
+    "default logger",
+    "log buffer",
+    "filter log lines by message"
+  ],
+  "use_when": [
+    "a test must assert the code logged a message or field via default slog",
+    "JSON log lines must be decoded and filtered by message"
+  ],
+  "not_for": [
+    "production logging: it swaps the process-wide default logger and is for tests only",
+    "tests that run in parallel: the default logger is global, so capture in a test that is not parallel"
+  ]
+}
