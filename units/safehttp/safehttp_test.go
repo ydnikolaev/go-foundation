@@ -286,8 +286,8 @@ func TestStatusError(t *testing.T) {
 			if !errors.Is(err, tt.wantIs) {
 				t.Fatalf("err = %v, want %v", err, tt.wantIs)
 			}
-			se, ok := errors.AsType[*safehttp.StatusError](err)
-			if !ok {
+			var se *safehttp.StatusError
+			if !errors.As(err, &se) {
 				t.Fatalf("err = %v (%T), want a *StatusError in its chain", err, err)
 			}
 			if se.Status != tt.wantStatus {
