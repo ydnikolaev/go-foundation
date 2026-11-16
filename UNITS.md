@@ -5,6 +5,7 @@
 | alert | primitive | experimental | send operational alerts without flooding the channel |
 | avatar | primitive | experimental | give users a pick-one set of generated profile pictures |
 | clock | primitive | experimental | test time-dependent code without sleeping |
+| comments | primitive | experimental | rules of a one-level comment thread: reply attach, edit window, content caps, honeypot, delete to stub, added mentions |
 | cron | primitive | experimental | schedule recurring jobs in a service process |
 | edit-coalescer | primitive | experimental | send the latest data of each remote object at most once per window |
 | gitfixture | primitive | experimental | stop Go tests running git from failing at cleanup, and fail the build on a raw git spawn |
