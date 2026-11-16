@@ -29,6 +29,8 @@ go/gitfixture	my Go tests that run git fail with unlinkat directory not empty wh
 go/gitfixture	scratch folder removal randomly errors, repository still repacking behind scenes
 go/slogtest	assert on what my Go code logged through slog by capturing the default logger in a test
 go/slogtest	verify my service emitted a given warning with the right attributes by reading back what it wrote to a buffer, filtered by message
+go/telegram-fake	test my Telegram bot code against a fake Bot API server that records the calls
+go/telegram-fake	exercise my chat messenger client offline against a local imitation and afterwards inspect which endpoints it hit and with what payloads
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address

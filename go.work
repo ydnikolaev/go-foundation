@@ -12,6 +12,7 @@ use (
 	./units/keyset
 	./units/moderation
 	./units/slogtest
+	./units/telegram-fake
 	./units/testdb
 	./units/tiptap
 )

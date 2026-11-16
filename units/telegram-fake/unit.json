@@ -1,0 +1,23 @@
+{
+  "id": "telegram-fake",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "fake Telegram Bot API over HTTP for tests: keeps each call's path and body, answers with one reply you set",
+  "keywords": [
+    "fake telegram bot api",
+    "httptest telegram",
+    "record bot api calls",
+    "telegram client test double",
+    "canned telegram reply"
+  ],
+  "use_when": [
+    "Telegram Bot API client code must be tested offline",
+    "a test reads back the calls made"
+  ],
+  "not_for": [
+    "simulating Telegram behaviour: it answers every call with the same reply and knows no method",
+    "production code: it starts a local HTTP server and is for tests only"
+  ],
+  "pairs": []
+}

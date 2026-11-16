@@ -1,0 +1,20 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-16
+headline: First release, a fake Telegram Bot API server for tests that keeps each call and answers with one given reply, taken from a consumer
+changes:
+  - id: TELEGRAMFAKE-0100-1
+    kind: feat
+    impact: high
+    subject: Fake Bot API server for tests as a shared unit
+    detail: >-
+      New starts a local HTTP server that answers every call with the reply the caller gave; URL is the API root a Bot
+      API client is pointed at; Calls returns a copy of the path and JSON body of each call received, oldest first;
+      Close stops the server. Taken from a consumer at its own tested state.
+    affects:
+      - telegramfake.New
+      - telegramfake.Server
+      - telegramfake.Call
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.
