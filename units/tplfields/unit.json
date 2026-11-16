@@ -1,0 +1,22 @@
+{
+  "id": "tplfields",
+  "stack": "go",
+  "kind": "primitive",
+  "stability": "experimental",
+  "summary": "list the data fields a Go template reads as sorted dotted key paths, from its parse tree; refuses what it cannot follow",
+  "keywords": [
+    "go template fields",
+    "text template parse tree",
+    "template data keys",
+    "html template variables",
+    "fields a template uses"
+  ],
+  "use_when": [
+    "the data a Go text or HTML template needs must be known before rendering it"
+  ],
+  "not_for": [
+    "templates with range, define, template or block: they are refused with the line, not guessed",
+    "rendering: it only reads the parse tree"
+  ],
+  "pairs": []
+}

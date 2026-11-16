@@ -1,0 +1,22 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: 2026-11-16
+headline: First release, a reader of the data fields a Go template uses from its parse tree, taken from a consumer
+changes:
+  - id: TPLFIELDS-0100-1
+    kind: feat
+    impact: high
+    subject: Template field reader as a shared unit
+    detail: >-
+      Fields parses a text/template or html/template source and returns the sorted, unique dotted key paths of every
+      field it reads, in any branch, condition or function argument, following with, else with, variables and chains. What
+      it cannot follow (define, template, block, range, the whole data, a field of a function result) is refused as an
+      *Error with the line and a Reason, never guessed. Taken from a consumer at its own tested state.
+    affects:
+      - tplfields.Fields
+      - tplfields.Error
+      - tplfields.ReasonParse
+      - tplfields.ReasonUnsupported
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

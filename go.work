@@ -17,4 +17,5 @@ use (
 	./units/telegram-fake
 	./units/testdb
 	./units/tiptap
+	./units/tplfields
 )
