@@ -97,7 +97,7 @@ func TestCheckEditWindow(t *testing.T) {
 		{time.Hour, ErrEditWindowClosed},
 	}
 	for _, c := range cases {
-		if err := CheckEdit(t0, t0.Add(c.at), w); err != c.want {
+		if err := CheckEdit(t0, t0.Add(c.at), w); !errors.Is(err, c.want) {
 			t.Errorf("edit at +%v: %v, want %v", c.at, err, c.want)
 		}
 	}
@@ -124,7 +124,7 @@ func TestCheckContent(t *testing.T) {
 		{"a photo with the cap at 0", false, 1, 0, ErrTooManyPhotos},
 	}
 	for _, c := range cases {
-		if err := CheckContent(c.text, c.photos, c.max); err != c.wantErr {
+		if err := CheckContent(c.text, c.photos, c.max); !errors.Is(err, c.wantErr) {
 			t.Errorf("%s: %v, want %v", c.name, err, c.wantErr)
 		}
 	}

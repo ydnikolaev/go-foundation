@@ -123,23 +123,23 @@ type Deletion struct {
 func Delete(ctx context.Context, s Store, id string) (Deletion, error) {
 	c, err := s.Get(ctx, id)
 	if err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: get: %w", id, err)
 	}
 	if c.Deleted {
 		return Deletion{}, fmt.Errorf("delete comment %s: a stub: %w", id, ErrNotFound)
 	}
 	n, err := s.Replies(ctx, id)
 	if err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: count replies: %w", id, err)
 	}
 	if n > 0 {
 		if err := s.Stub(ctx, id); err != nil {
-			return Deletion{}, err
+			return Deletion{}, fmt.Errorf("delete comment %s: stub: %w", id, err)
 		}
 		return Deletion{Stubbed: true}, nil
 	}
 	if err := s.Remove(ctx, id); err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: remove: %w", id, err)
 	}
 	out := Deletion{Removed: []string{id}}
 	if c.Top() {
@@ -147,20 +147,20 @@ func Delete(ctx context.Context, s Store, id string) (Deletion, error) {
 	}
 	parent, err := s.Get(ctx, c.ParentID)
 	if err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: get parent %s: %w", id, c.ParentID, err)
 	}
 	if !parent.Deleted {
 		return out, nil
 	}
 	left, err := s.Replies(ctx, parent.ID)
 	if err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: count replies of stub %s: %w", id, parent.ID, err)
 	}
 	if left > 0 {
 		return out, nil
 	}
 	if err := s.Remove(ctx, parent.ID); err != nil {
-		return Deletion{}, err
+		return Deletion{}, fmt.Errorf("delete comment %s: remove stub %s: %w", id, parent.ID, err)
 	}
 	out.Removed = append(out.Removed, parent.ID)
 	return out, nil
