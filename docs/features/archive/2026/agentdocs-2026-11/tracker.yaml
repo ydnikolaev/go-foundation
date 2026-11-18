@@ -1,3 +1,8 @@
+schema: 1
+tier: 2
+origin: null
+accepted: null
+budget: {usd: null, wave_usd: null}
 epic: agentdocs-2026-11
 title: agentdocs — embedded agent docs as a shared unit
 status: done
@@ -10,6 +15,7 @@ phases:
   status: done
   wave: 1
   depends_on: []
+  lane: null
   area: [units/agentdocs/**]
   spec: specs/01-api.md
   note: waits on R-8 (asked); then port, parity against a2a skill install, unit-release.sh, tag per R-7
