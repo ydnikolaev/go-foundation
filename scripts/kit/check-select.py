@@ -9,7 +9,12 @@ are the whole tree, `@units <target> <adapter>` a target scripts/kit/check-units
 is derived (check-units.py: needs, declared, price): light leaves slow targets and what does not fit 180 s of summed price for
 check-full, with docker unreachable; sweep is full with the store ignored; `--only` runs the named targets as check-full does.
 Clocks KIT_LIGHT_S (900) and KIT_FULL_S (3600) are hang guards: they kill, go red and name the slowest three (a loaded host
-must not trip them). Old callers: KIT_REUSE or KIT_CHECK_BASE turns a light run into `make check-full`.
+must not trip them).
+Targets run at once up to make's jobserver (a client: one in kit-select's slot, a fifo token per further one), each printed
+as one block when it ends; `n` in MAKEFLAGS runs nothing. The light and unclassed classes run every target past a red; the
+heavy class starts only when they all ended green, one at a time, and stops at its first red; a red run ends on `red <n>:
+<target> (exit <c>), ...`. SIGTERM or SIGINT kills every running target and exits 143 or 130. `--explain <path>...` prints each path's map line (or its module), targets
+and `hit` or `runs`, runs nothing (exit 1 for a path with no row and no module check).
 Exit: 0 green; 1 red; 2 usage or a malformed row; 3 refusal. Stdlib only, python3 >= 3.9, POSIX."""
 from __future__ import annotations
 
@@ -21,11 +26,14 @@ import hashlib
 import importlib.util
 import json
 import os
+import queue
 import re
+import select
 import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 from pathlib import Path
@@ -40,8 +48,6 @@ STALE_DAYS = 7  # a green row older than this is not reused (core/verdict.py STA
 KEEP_DAYS = 14  # the first append of a day drops rows and logs older than this
 GRACE = 7  # seconds between SIGTERM and SIGKILL of a killed target: core/run.py HOLD_GRACE (no devkit import)
 CLOCKS = {"light": ("KIT_LIGHT_S", 900.0), "full": ("KIT_FULL_S", 3600.0), "sweep": ("KIT_FULL_S", 3600.0)}
-MAKE_ENV = ("MAKELEVEL", "MAKEFLAGS", "MFLAGS")
-OLD_ENV = ("KIT_REUSE", "KIT_CHECK_BASE", "KIT_CHECK_HEAD", "KIT_TIER", "KIT_GOALS", "KIT_MAKE_PID", *MAKE_ENV)
 TARGET_ENV = ("KIT_CHECK_PATHS", "KIT_CHECK_MODULES", "KIT_COVER_BASE", "UNITS_BUDGET_S")
 CLASS_ORDER = ("light", "unclassed", "heavy")  # the run order of a tier; the tier itself is units.tier_of
 TOOLS = "uv --version; uv run --no-project --no-python-downloads -q python --version; python3 --version; go version"
@@ -465,34 +471,60 @@ def kill_group(proc: subprocess.Popen) -> None:
         pass
     proc.wait()
 
-def tee(stream, log: Path | None) -> None:
+def run_make(argv: list[str], env: dict[str, str], timeout: float | None, log: Path | None, stop=None) -> int | None:
+    """One target in its own process group, output to `log`: its exit, or None when the clock or `stop` killed it."""
+    end = None if timeout is None else time.monotonic() + timeout
     with open(log or os.devnull, "wb") as sink:
-        for chunk in iter(lambda: os.read(stream.fileno(), 65536), b""):
-            sys.stdout.buffer.write(chunk)
-            sys.stdout.buffer.flush()
-            sink.write(chunk)
-
-def run_make(argv: list[str], env: dict[str, str], timeout: float | None, log: Path | None) -> int | None:
-    """One target in its own process group, output to stdout and `log`: its exit, or None when the clock killed it."""
-    sys.stdout.flush()
-    try:
-        proc = subprocess.Popen(argv, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, start_new_session=True)
-    except OSError as exc:
-        raise Stop(2, f"{TAG} cannot run {argv[0]}: {exc}")
-    pump = threading.Thread(target=tee, args=(proc.stdout, log), daemon=True)
-    pump.start()
-    try:
-        code = proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        kill_group(proc)
-        code = None
-    except BaseException:
-        kill_group(proc)
-        raise
-    pump.join(GRACE)  # a grandchild that keeps the pipe open is not waited for
-    return code
+        try:
+            proc = subprocess.Popen(argv, env=env, stdout=sink, stderr=subprocess.STDOUT, start_new_session=True)
+        except OSError as exc:
+            raise Stop(2, f"{TAG} cannot run {argv[0]}: {exc}")
+        try:
+            while True:
+                try:
+                    return proc.wait(timeout=0.1)
+                except subprocess.TimeoutExpired:
+                    if (stop is not None and stop.is_set()) or (end is not None and time.monotonic() >= end):
+                        kill_group(proc)
+                        return None
+        except BaseException:
+            kill_group(proc)
+            raise
 
 RUN = run_make
+
+class Jobs:
+    """make's jobserver, joined as a client (make manual 13.1.1): the `-jN` and fifo of MAKEFLAGS. One target runs in
+    kit-select's own slot; each further one takes a byte of the fifo and the same byte is written back when it ends."""
+    def __init__(self, flags: str) -> None:
+        found = re.findall(r"(?:^|\s)-j(\d*)(?=\s|$)", flags)
+        self.width = (int(found[-1]) if found[-1] else 0) if found else 1  # 0: `-j` with no number
+        fifo = re.findall(r"--jobserver-auth=fifo:(\S+)", flags)
+        self.fd = None
+        if fifo and self.width != 1:
+            try:
+                self.fd = os.open(fifo[-1], os.O_RDWR | os.O_NONBLOCK)
+            except OSError:
+                self.fd = None
+        if self.fd is None and self.width != 1:
+            say(f"{TAG} no jobserver for this recipe: targets run one at a time")
+
+    def take(self, wait: float) -> bytes | None:
+        """One token, or None when none came within `wait` seconds."""
+        if self.fd is None or not select.select([self.fd], [], [], max(0.0, wait))[0]:
+            return None
+        try:
+            return os.read(self.fd, 1) or None
+        except BlockingIOError:  # another client of the jobserver read it first
+            return None
+
+    def give(self, token: bytes | None) -> None:
+        if token is not None and self.fd is not None:
+            os.write(self.fd, token)
+
+    def close(self) -> None:
+        if self.fd is not None:
+            os.close(self.fd)
 
 def clock(tier: str) -> tuple[str, float]:
     """(the clock's name, its seconds): the environment, then .devkit/config.env, else the default."""
@@ -505,55 +537,146 @@ def clock(tier: str) -> tuple[str, float]:
 def make_cmd() -> list[str]:
     return shlex.split(os.environ.get("KIT_MAKE", "") or "make")
 
-def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: str, began: float, classes, room=None) -> tuple:
-    """Run `todo` {target: digest} in class order under the tier's clock, a target row each: (ran, red, killed, spent).
-    Light: docker is unreachable, and a set (`@units`) is handed `room` seconds of price less what earlier sets spent."""
+def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: str, began: float, classes, room=None,
+            cover: int = 0) -> tuple:
+    """Run `todo` {target: digest} under the tier's clock and make's jobserver, a target row each: (ran, red, killed, spent).
+    Light and unclassed start in that order as slots free and run past a red; heavy starts when they all ended green, one at
+    a time, and stops at its first red; `@units` sets never overlap. Light: docker is unreachable, and a set is handed `room`
+    seconds of price less what earlier sets spent. A red `cover` (coverage-config) opens the red list."""
     key, limit = clock(tier)
+    deadline, sets = began + limit, tree().sets
     groups: dict[str, list[str]] = {name: [] for name in CLASS_ORDER}
     for name in todo:
         groups[target_class(name, *classes)].append(name)
-    logs = store().parent / "logs" if store() else None
-    if logs:
-        logs.mkdir(parents=True, exist_ok=True)
-    ran, red, spent = [], [], {}
-    for at, klass in enumerate(CLASS_ORDER):
-        for position, name in enumerate(groups[klass]):
-            log = logs / f"{run}-{re.sub(r'[^A-Za-z0-9._-]', '_', name)}.log" if logs else None
-            start = CLOCK()
-            left = began + limit - start
-            env = target_env(targets[name], name, tier)
-            if tier == "light":
-                env["DOCKER_HOST"] = units().FENCE  # check never starts docker: a target that calls it is red
-            if room is not None and name in tree().sets:
-                env["UNITS_BUDGET_S"] = f"{max(0.0, room - sum(v for k, v in spent.items() if k in tree().sets)):g}"
-            code = RUN([*make_cmd(), name], env, left, log) if left > 0 else None
-            spent[name] = round(CLOCK() - start, 3)
-            ran.append(name)
-            append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "target": name, "digest": todo[name],
-                    "exit": code, "wall_s": spent[name], "free": tier == "sweep", "log": str(log) if log else None,
-                    "tier": "light" if tier == "light" else "full"})
-            say(f"{TAG} ran {name} {'killed' if code is None else code} {spent[name]:g}")
-            if code and tier == "light" and log and units().FENCE_MARK in read(log):
-                say(f"next: name {name} in docker_targets", err=True)
-            if code is None:
-                slow = ", ".join(f"{n} {s:g} s" for n, s in sorted(spent.items(), key=lambda item: -item[1])[:3])
-                say(f"{TAG} clock {key}={limit:g} s ran out: killed {name}; slowest {slow}", err=True)
-                return ran, [*red, name], True, spent
-            if code != 0:
-                red.append(name)
-                say(f"{TAG} red {name} (exit {code})", err=True)
-                if klass == "heavy":  # one heavy target at a time: nothing starts after a red one
-                    if rest := groups[klass][position + 1:]:
-                        say(f"{TAG} stopped before heavy {' '.join(rest)}: heavy red {name}", err=True)
-                    return ran, red, False, spent
-        later = [name for name in CLASS_ORDER[at + 1:] if groups[name]]
-        if red:  # FB-889: the CHECK_EXTRA goals after kit-select never start either, so the one stop line names them
-            parts = [f"{later[0]} {' '.join(n for name in later for n in groups[name])}"] if later else []
-            parts += [f"CHECK_EXTRA {' '.join(extra)}"] if (extra := unrun_extras()) else []
-            if parts:
-                say(f"{TAG} stopped before {' + '.join(parts)}: {klass} red {' '.join(red)}", err=True)
-            break
-    return ran, red, False, spent
+    if re.search(r"(?:^|\s)--shuffle=reverse(?:\s|$)", os.environ.get("MAKEFLAGS", "")):
+        for names in groups.values():
+            names.reverse()
+    scratch = None if store() else tempfile.TemporaryDirectory(prefix="kit-select-")
+    logs = store().parent / "logs" if store() else Path(scratch.name)
+    logs.mkdir(parents=True, exist_ok=True)
+    ran, spent, wentred, killed, late = [], {}, {name: [] for name in CLASS_ORDER}, [], []
+    red, exits = (["coverage-config"], {"coverage-config": cover}) if cover else ([], {})
+    pending, heavy = groups["light"] + groups["unclassed"], list(groups["heavy"])
+    running: dict[str, threading.Thread] = {}
+    ended: queue.Queue = queue.Queue()
+    stop, caught, jobs = threading.Event(), [], Jobs(os.environ.get("MAKEFLAGS", ""))
+
+    def work(name: str, env: dict, log: Path, token: bytes | None, start: float) -> None:
+        out = (None, None)
+        try:
+            out = (RUN([*make_cmd(), name], env, deadline - start, log, stop=stop) if deadline > start else None, None)
+        except BaseException as exc:  # handed to the main thread, which stops the rest and raises it
+            out = (None, exc)
+        finally:
+            try:
+                ended.put((name, *out, round(CLOCK() - start, 3)))  # before the token: a token taken finds this result
+            finally:
+                jobs.give(token)
+
+    def begin(name: str, token: bytes | None) -> None:
+        log = logs / f"{run}-{re.sub(r'[^A-Za-z0-9._-]', '_', name)}.log"
+        env = target_env(targets[name], name, tier)
+        if tier == "light":
+            env["DOCKER_HOST"] = units().FENCE  # check never starts docker: a target that calls it is red
+        if room is not None and name in sets:
+            env["UNITS_BUDGET_S"] = f"{max(0.0, room - sum(v for k, v in spent.items() if k in sets)):g}"
+        running[name] = threading.Thread(target=work, args=(name, env, log, token, CLOCK()), daemon=True)
+        running[name].start()
+
+    def finish(name: str, code: int | None, exc: BaseException | None, wall_s: float) -> None:
+        running.pop(name).join()
+        if exc is not None:
+            stop.set()
+            raise exc
+        if caught:  # a signal: the killed targets prove nothing and write no row
+            return
+        log = logs / f"{run}-{re.sub(r'[^A-Za-z0-9._-]', '_', name)}.log"
+        spent[name], exits[name] = wall_s, code
+        ran.append(name)
+        append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "target": name, "digest": todo[name],
+                "exit": code, "wall_s": wall_s, "free": tier == "sweep", "log": None if scratch else str(log),
+                "tier": "light" if tier == "light" else "full"})
+        text = read(log)
+        if text:
+            sys.stdout.write(text if text.endswith("\n") else text + "\n")
+        say(f"{TAG} ran {name} {'killed' if code is None else code} {wall_s:g}")
+        if code and tier == "light" and units().FENCE_MARK in text:
+            say(f"next: name {name} in docker_targets", err=True)
+        if code is None:
+            stop.set()  # the clock ran out: every running target is killed, nothing more starts
+            killed.append(name)
+            red.append(name)
+        elif code != 0:
+            klass = target_class(name, *classes)
+            red.append(name)
+            wentred[klass].append(name)
+            say(f"{TAG} red {name} (exit {code})", err=True)
+            if klass == "heavy" and heavy:
+                say(f"{TAG} stopped before heavy {' '.join(heavy)}: heavy red {name}", err=True)
+
+    def ready() -> str | None:
+        if stop.is_set():
+            return None
+        name = next((n for n in pending if n not in sets or not any(other in sets for other in running)), None)
+        if name is None and not (pending or running or wentred["light"] or wentred["unclassed"] or wentred["heavy"]):
+            name = heavy[0] if heavy else None
+        if name is not None and CLOCK() >= deadline:  # the clock ran out before it started: not killed, and red
+            stop.set()
+            late.extend(pending + heavy)
+            red.extend(late)
+            return None
+        return name
+
+    def on_signal(signum: int, _frame) -> None:
+        caught.append(signum)
+        stop.set()
+    main_thread = threading.current_thread() is threading.main_thread()
+    before = {sig: signal.signal(sig, on_signal) for sig in (signal.SIGTERM, signal.SIGINT)} if main_thread else {}
+    try:
+        while True:
+            while not ended.empty():
+                finish(*ended.get())
+            name = ready()
+            if name is None and not running:
+                break
+            token = None
+            if name is not None and running:
+                token = jobs.take(max(0.0, min(0.05, deadline - CLOCK())))
+                if token is not None and not ended.empty():  # a target ended meanwhile: read its result first
+                    jobs.give(token)
+                    continue
+                name = name if token is not None else None
+            if name is None:
+                try:
+                    finish(*ended.get(timeout=0.05))
+                except queue.Empty:
+                    pass
+                continue
+            (heavy if name in heavy else pending).remove(name)
+            begin(name, token)
+    finally:
+        if running:
+            stop.set()
+            for thread in list(running.values()):
+                thread.join()
+        for sig, handler in before.items():
+            signal.signal(sig, handler)
+        jobs.close()
+        if scratch:
+            scratch.cleanup()
+    if caught:
+        name = signal.Signals(caught[0]).name
+        raise Stop(128 + caught[0], f"{TAG} stopped by {name}: nothing more starts and no row is written")
+    if killed or late:
+        slow = ", ".join(f"{n} {s:g} s" for n, s in sorted(spent.items(), key=lambda item: -item[1])[:3])
+        parts = [f"killed {' '.join(killed)}" if killed else "", f"not started {' '.join(late)}" if late else "", f"slowest {slow}" if slow else ""]
+        say(f"{TAG} clock {key}={limit:g} s ran out: " + "; ".join(p for p in parts if p), err=True)
+    elif heavy and (wentred["light"] or wentred["unclassed"]):  # a light or unclassed red: the heavy targets do not start (FB-889)
+        say(f"{TAG} stopped before heavy {' '.join(heavy)}: " + ", ".join(f"{k} red {' '.join(wentred[k])}" for k in CLASS_ORDER if wentred[k]), err=True)
+    if red:  # every red run ends on one line of every red target in the order they ended (FB-1142, FB-1187)
+        mark = {n: "not started" if n in late else "killed" if exits[n] is None else f"exit {exits[n]}" for n in red}
+        say(f"{TAG} red {len(red)}: " + ", ".join(f"{n} ({mark[n]})" for n in red), err=True)
+    return ran, red, bool(killed or late), spent
 
 def make_age(pid: str) -> int:
     """make's wall time so far in whole seconds (ps etime, `[[dd-]hh:]mm:ss`)."""
@@ -590,7 +713,35 @@ def cover_config() -> int:
         say(f"{TAG} red coverage-config (exit {code})", err=True)
     return code
 
+def explain(paths: list[str], maps: list[str]) -> int:
+    """`--explain`: for each path its map line, the row's targets (tier, class, `hit` or `runs`); runs nothing, writes no row.
+    A path's targets are the plan's own: its row's, then its module's checks. 0 when every path has a row or a module check
+    (a `-` row prints `no targets`), 1 when one has neither."""
+    root = Path(git_out("rev-parse", "--show-toplevel")).resolve()
+    explicit = [Path(m).resolve() for m in maps]
+    t = tree(root, map_files(root, explicit))
+    map_rows, reg = load_rows(root, explicit), load_registry(root, explicit, t.paths)
+    mapped, _unmapped = plan(t, map_rows, reg)
+    classes, book, code = class_lists(root), units().history(rows()), 0
+    for path in paths:
+        key = path.removeprefix("./")
+        row = first_row(map_rows, key)
+        names = list(row.targets) if row else []
+        names += [name for name, item in mapped.items() if item.modules and key in item.own and name not in names]
+        if not row and not names:
+            say(f"{TAG} explain {path}: no row")
+            code = 1
+            continue
+        say(f"{TAG} explain {path}: {f'{row.where} {row.glob}' if row else f'module {reg.of(key)}'} {' '.join(names) or 'no targets'}")
+        for name in names:
+            tier = "set" if name in t.sets else target_tier(name, book.get(name, []), classes)
+            hit = green(digest(name, mapped[name].inputs if name in mapped else []), "full" if tier == "slow" else "light")
+            say(f"{TAG}   {name} {tier} {target_class(name, *classes)} {'hit' if hit else 'runs'}")
+    return code
+
 def execute(args: argparse.Namespace) -> int:
+    if args.explain:
+        return explain(args.explain, args.map)
     began = CLOCK()
     tier = os.environ.get("KIT_TIER", "").strip() or "light"
     if tier not in CLOCKS:
@@ -601,12 +752,6 @@ def execute(args: argparse.Namespace) -> int:
         raise Stop(3, f"{TAG} {REFUSE_FULL}")
     root = Path(git_out("rev-parse", "--show-toplevel")).resolve()
     os.chdir(str(root))
-    old = "KIT_REUSE" if "KIT_REUSE" in os.environ else "KIT_CHECK_BASE" if os.environ.get("KIT_CHECK_BASE") else ""
-    if tier == "light" and old:  # the old callers' rule: check-full at make level 0, so the shim queues it
-        say(f"{TAG} {old} is set (an old caller): make check-full runs instead")
-        env = {key: value for key, value in os.environ.items() if key not in OLD_ENV}
-        code = RUN([*make_cmd(), "--no-print-directory", "check-full"], env, None, None)
-        return 1 if code is None else code
     explicit = [Path(m).resolve() for m in args.map]
     strict = args.strict or project_has_tiers(root)
     tier = tier if strict else "light"  # not strict: a full ask runs the light tier, never a full run
@@ -641,15 +786,17 @@ def execute(args: argparse.Namespace) -> int:
         todo = {name: dig for name, dig in todo.items() if name not in left}
         for name in left:
             say(f"{TAG} left for check-full: {name}")
-    cover_red = cover_config()
+    flags = os.environ.get("MAKEFLAGS", "")
+    if "n" in (flags.split()[0] if flags.split() and not flags.startswith((" ", "-")) else ""):  # `make -n` runs a `+` line
+        say(f"{TAG} -n: would run {' '.join(todo) or 'nothing'}")
+        return 0
+    cover = cover_config()
     run = f"{utc_now():%Y%m%dT%H%M%SZ}-{os.getpid()}"
-    ran, red, killed, spent = run_all(targets, todo, tier, run, began, classes, room)
-    code, total = 1 if red or cover_red else 0, wall(began)
+    ran, red, killed, spent = run_all(targets, todo, tier, run, began, classes, room, cover)
+    code, total = 1 if red else 0, wall(began)
     append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "tier": tier,
             "tree": git_try("write-tree") if t.clean else None, "exit": code, "wall_s": total, "killed": killed,
             "ran": ran, "reused": reused})
-    if tier == "light" and total - sum(spent.values()) > units().EXTRAS_S:  # a printed line: no exit code reads it
-        say(units().extras_line(total - sum(spent.values()), [w for w in extra_words() if not w.startswith("kit-")]))
     if not strict:
         listed("not checked", unmapped, False)
         say(f"warn: no gate tiers yet; CHANGELOG {HAND_STEP_VERSION} hand step")
@@ -657,37 +804,13 @@ def execute(args: argparse.Namespace) -> int:
     say(f"{TAG} {tier} · ran {done} · reused {len(reused)} · left {len(left)}")
     return code
 
-# ---- kept for callers outside the template (the old-callers rule): gone with them at SHIMS-OUT ------------------
-def record(argv: list[str]) -> int:  # `--record`, the leak gate's last step: the run row replaced light-run telemetry
-    return 0
-
-# ---- the CHECK_EXTRA words, read from make's database ----------------------------------------------------------
-CHECK_EXTRA_LINE = re.compile(r"^CHECK_EXTRA[ \t]*:{0,2}=[ \t]*(.*)$")
-
-def extra_words() -> list[str]:
-    """The words of CHECK_EXTRA in make's order, from `make -pRrq :` (a fresh top-level make; nothing runs); none when it fails."""
-    env = {k: v for k, v in os.environ.items() if k not in MAKE_ENV}
-    try:
-        out = subprocess.run([*make_cmd(), "-pRrq", ":"], capture_output=True, text=True, errors="replace",
-                             stdin=subprocess.DEVNULL, env=env).stdout
-    except OSError:
-        return []
-    found = [m for m in map(CHECK_EXTRA_LINE.match, out.partition("\n# Files")[0].splitlines()) if m]
-    return [word for word in found[-1].group(1).split() if "$" not in word] if found else []
-
-def unrun_extras() -> list[str]:
-    """The CHECK_EXTRA goals after kit-select, in make's order (none when kit-select is missing)."""
-    words = extra_words()
-    return words[words.index("kit-select") + 1:] if "kit-select" in words else []
-
 def main(argv: list[str]) -> int:
-    if "--record" in argv:
-        return record(argv)
     parser = argparse.ArgumentParser(prog="check-select.py", description="Run the map targets not green on this content.")
     parser.add_argument("--map", action="append", default=[], metavar="FILE", help="a map file (repeatable; replaces the list)")
     parser.add_argument("--trunk", default="", help=argparse.SUPPRESS)  # an old caller's flag: no diff base is read
     parser.add_argument("--strict", action="store_true", help="strict without reading the Makefile")
     parser.add_argument("--only", nargs="+", default=[], metavar="TARGET", help="run just these map targets, as check-full does")
+    parser.add_argument("--explain", nargs="+", default=[], metavar="PATH", help="print the map line and targets of each path; run nothing")
     args = parser.parse_args(argv)
     try:
         return execute(args)

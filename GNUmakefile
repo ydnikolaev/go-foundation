@@ -16,8 +16,12 @@
 # After Makefile is read, the branch that reads it adds the vocabulary's prerequisite-only lines (standards/make.md §1): `kit-verbs`
 # (scripts/kit/check-verbs.py) runs before check, check-full and (docker module on: mk/kit-docker.mk) check-docker whatever recipe the project gave them, and test, lint
 # and fmt exist in every repo (`test` runs the registered test targets, `lint` and `fmt` the project's LINT_ALL and FMT_ALL).
+# The first make inside a hold of a gate goal (check, check-full, check-docker, sweep) on make >= 4.4 runs kit-verbs (and,
+# for check-docker, kit-docker-need) first, then the goals at the grant (`-j$(HEAVY_RUN_CORES) -O -k`; KIT_JOBS marks that
+# make, whose kit-verbs already ran); the hold's recipe drops a typed -j and jobserver, so the grant wins.
+# Order-only lines (only when a gate goal is asked: a goal typed by hand keeps its order) keep the seed's order: kit-verbs first, then (check-docker) kit-docker-need, the full gate's items,
+# CHECK_DOCKER (each item after them but the leak gate, which waits for CHECK_DOCKER: `| check-full` would be a cycle).
 # Those lines are read only in a kit render (`.devkit/config.env` exists): a copy made by /devkit:apply-ops has no kit scripts, so no vocabulary.
-# Old callers (KIT_REUSE set, or KIT_CHECK_BASE non-empty): a `check` goal is classed and queued as `check-full`.
 kit_conf := .devkit/config.env
 ifeq ($(MAKELEVEL),0)
 kit_comma := ,
@@ -35,12 +39,10 @@ kit_docker := check-docker $(subst $(kit_comma), ,$(or $(KIT_DOCKER_TARGETS),$(c
 kit_dev_names := dev-up dev-down dev-status run serve dev-% %-run serve-% run-% watch%
 kit_devs := $(subst $(kit_comma), ,$(or $(KIT_DEV_TARGETS),$(call kit_val,KIT_DEV_TARGETS)))
 kit_light := $(filter-out $(kit_list),check lint fmt vet)
-kit_old := $(if $(filter-out undefined,$(origin KIT_REUSE))$(KIT_CHECK_BASE),$(filter check,$(MAKECMDGOALS)))
-kit_goals := $(if $(kit_old),$(patsubst check,check-full,$(MAKECMDGOALS)),$(MAKECMDGOALS))
-kit_lit := $(filter-out $(filter $(kit_list) $(kit_docker),$(kit_goals)),$(filter $(kit_lights),$(kit_goals)))
-kit_dev := $(filter-out $(filter $(kit_list) $(kit_docker),$(kit_goals)),$(filter $(kit_dev_names) $(kit_devs),$(kit_goals)))
+kit_lit := $(filter-out $(filter $(kit_list) $(kit_docker),$(MAKECMDGOALS)),$(filter $(kit_lights),$(MAKECMDGOALS)))
+kit_dev := $(filter-out $(filter $(kit_list) $(kit_docker),$(MAKECMDGOALS)),$(filter $(kit_dev_names) $(kit_devs),$(MAKECMDGOALS)))
 kit_heavy := $(filter-out $(kit_light) $(kit_dev) $(kit_lit),$(filter check-% %-check test test-% e2e% %-gate build build-% \
-  %-build image image-% %-image sweep $(kit_list) $(kit_docker),$(kit_goals)))
+  %-build image image-% %-image sweep $(kit_list) $(kit_docker),$(MAKECMDGOALS)))
 ifneq ($(kit_dev),)
 ifneq ($(kit_heavy),)
 $(error $(firstword $(kit_dev)) is a dev goal and $(firstword $(kit_heavy)) is heavy: run them apart)
@@ -65,22 +67,45 @@ ifneq ($(kit_outer),)
 kit_first := $(firstword $(MAKECMDGOALS))
 .PHONY: $(MAKECMDGOALS)
 $(kit_first):
-	+@python3 $(KIT_HEAVY_RUN) run $(kit_wait)--label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy) $(MAKECMDGOALS)) --cores $(kit_slot_cores) -- $(MAKE) --no-print-directory $(kit_goals)
+	+@MAKEFLAGS='$(filter-out -j% --jobserver-auth=%,$(MAKEFLAGS))' python3 $(KIT_HEAVY_RUN) run $(kit_wait)--label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy) $(MAKECMDGOALS)) --cores $(kit_slot_cores) -- $(MAKE) --no-print-directory $(MAKECMDGOALS)
 $(filter-out $(kit_first),$(MAKECMDGOALS)): $(kit_first) ;
 else
 ifeq ($(MAKELEVEL)$(HEAVY_RUN_SLOT)$(kit_dev)$(if $(KIT_HEAVY_RUN),,x),0)
 export HEAVY_RUN_CORES := $(if $(kit_heavy),$(kit_cores),2)
 export GOMAXPROCS := $(HEAVY_RUN_CORES)
 endif
+kit_pre44 := $(filter 0.% 1.% 2.% 3.% 4.0 4.0.% 4.1 4.1.% 4.2 4.2.% 4.3 4.3.%,$(MAKE_VERSION))
+kit_grant := $(if $(HEAVY_RUN_SLOT),$(if $(HEAVY_RUN_CORES),$(if $(KIT_JOBS)$(kit_pre44),,$(filter check check-full check-docker sweep,$(MAKECMDGOALS)))))
+ifneq ($(if $(kit_grant),$(wildcard .devkit/config.env)),)
+# The grant in two phases (LR-8): the preflights one make each, the first red ends the run before any other target starts
+# (a `.WAIT` group's members have no order-only line), then the gate at the grant; a typed -jN at level 0 stays its own.
+kit_first := $(firstword $(MAKECMDGOALS))
+.PHONY: $(MAKECMDGOALS)
+$(kit_first):
+	+@$(MAKE) --no-print-directory kit-verbs KIT_GOALS='$(MAKECMDGOALS)'$(if $(wildcard mk/kit-docker.mk),$(if $(filter check-docker,$(MAKECMDGOALS)), && $(MAKE) --no-print-directory kit-docker-need)) && KIT_JOBS=$(HEAVY_RUN_CORES) $(MAKE) --no-print-directory $(if $(filter --jobserver-auth=%,$(MAKEFLAGS)),,-j$(HEAVY_RUN_CORES)) -O -k $(MAKECMDGOALS)
+$(filter-out $(kit_first),$(MAKECMDGOALS)): $(kit_first) ;
+else
+ifneq ($(kit_grant),)
+MAKEFLAGS += -j$(HEAVY_RUN_CORES) -O -k
+export KIT_JOBS := $(HEAVY_RUN_CORES)
+endif
 include Makefile
 ifneq ($(wildcard .devkit/config.env),)
 .PHONY: kit-verbs test lint fmt
 kit-verbs: export KIT_GOALS := $(MAKECMDGOALS)
 kit-verbs: export KIT_MAKE := $(MAKE)
-kit-verbs: ; @python3 scripts/kit/check-verbs.py
+kit-verbs: ; @$(if $(KIT_JOBS),:,python3 scripts/kit/check-verbs.py)
 check check-full $(if $(wildcard mk/kit-docker.mk),check-docker): kit-verbs
+ifneq ($(filter check check-full check-docker sweep,$(MAKECMDGOALS)),)
+$(filter-out .WAIT,$(CHECK_EXTRA) $(CHECK_FULL) $(CHECK_DOCKER)): | kit-verbs
+ifneq ($(if $(wildcard mk/kit-docker.mk),$(filter check-docker,$(MAKECMDGOALS))),)
+$(filter-out .WAIT,$(CHECK_EXTRA) $(CHECK_FULL)): | kit-docker-need
+$(filter-out .WAIT,$(CHECK_DOCKER)): | $(filter-out .WAIT kit-leak-gate,$(CHECK_EXTRA) $(CHECK_FULL))
+endif
+endif
 test: kit-test
 lint: $(LINT_ALL)
 fmt: $(FMT_ALL)
+endif
 endif
 endif

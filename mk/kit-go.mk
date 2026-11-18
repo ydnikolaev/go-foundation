@@ -39,7 +39,11 @@ $(KIT_CACHE_STAMP):
 # The trim stays light; its own script test lives in devkit's tests/, not in a render.
 CHECK_EXTRA += cache-trim-auto
 
-.PHONY: cache-trim cache-trim-auto cache-status kit-go-test kit-go-test-flaky kit-go-lint kit-go-fmt kit-go-grep kit-go-shape kit-go-baseline
+.PHONY: cache-trim cache-trim-auto cache-status kit-go-test kit-go-test-flaky kit-go-lint kit-go-fmt kit-go-grep kit-go-shape kit-go-baseline kit-go-add
+
+# FB-1011: PKG and DIR reach the recipe only through the environment (`$(value)`: make never expands them).
+kit-go-add: export GO_ADD_PKG := $(value PKG)
+kit-go-add: export GO_ADD_DIR := $(or $(value DIR),.)
 
 # FB-725 (R-214): grep gates in every `make check`: no //nolint and no time.Sleep in a _test.go (code keeps the explained //nolint:<linter> // <why>, nolintlint polices it). Whole-tree like
 # the lint above, for the same reason: a rule that only fires on touched files lets old breaches hide.
@@ -69,6 +73,13 @@ FMT_ALL += kit-go-fmt
 # importing one runs without -short.
 KIT_GO_DB_IMPORTS ?=
 export KIT_GO_DB_IMPORTS
+# FB-1193: the build tags of each Go test tier (comma or space list; the full tier always adds `slow`). Empty = none. A project sets them in its
+# own Makefile, after the `-include mk/*.mk` line (`KIT_GO_TEST_TAGS_FULL = integration`), never in the managed .devkit/config.env: a set line
+# there conflicts on `devkit update --apply`. `?=` keeps an environment or command-line value; `export` hands the deferred value to go-test.sh.
+KIT_GO_TEST_TAGS_LIGHT ?=
+KIT_GO_TEST_TAGS_FULL ?=
+export KIT_GO_TEST_TAGS_LIGHT
+export KIT_GO_TEST_TAGS_FULL
 # Runs of each test in the flaky goal.
 COUNT ?= 3
 
@@ -76,7 +87,7 @@ COUNT ?= 3
 # (`@units kit-go-test scripts/kit/go-test.sh`), so the recipe is the driver: a unit is a package dir; the driver selects the packages
 # whose inputs changed (or every one without KIT_CHECK_PATHS), runs the ones its store does not hold green, and writes one row per unit.
 # `make check` is the light tier (-short, the light build tags), `make check-full` the full one (no -short, tag `slow`, KIT_GO_TEST_TAGS_FULL
-# from .devkit/config.env). `make test TESTS=<pkg> RUN=TestX` runs one package, and fails when TestX never ran. The test cache stays on:
+# from the Makefile variable above). `make test TESTS=<pkg> RUN=TestX` runs one package, and fails when TestX never ran. The test cache stays on:
 # never -count (a cache off is 3x slower), the flaky goal below is the one place that repeats a test.
 # KIT_GO_TEST_FLAGS adds `go test` flags, KIT_GO_TEST_RUNNER a command prefix that runs before `go test` (FB-957); the test
 # temp dir is made by the script under the same <base> as GOTMPDIR (R-236, R-273), so GOTMPDIR above stays the one every other go command uses.
@@ -191,6 +202,15 @@ kit-go-baseline: ## Record today's Go lint and grep findings in config/go-lint.c
 
 kit-go-shape: ## Code-shape gate: an entry package over 300 code lines, any package over 2000 (advisory until config/go-shape.ceiling exists)
 	@bash scripts/kit/go-shape.sh
+
+# A dev goal, in no check map: kit-go-lint keeps its GOPROXY=off tidy check and stays the gate. The GOTMPDIR and GOFLAGS are the ones exported above.
+# PKG is quoted, so a value with spaces stays one word; a flag such as -u still reaches `go get` as its own argument.
+kit-go-add: ## Add a Go dependency: make kit-go-add PKG=<module>[@version] [DIR=<go.mod dir>] (go get, go mod tidy, then the go.mod/go.sum diff)
+	@if [ -z "$$GO_ADD_PKG" ]; then echo "kit-go-add: PKG=<module>[@version] is required" >&2; exit 2; fi; \
+	dir="$$GO_ADD_DIR"; \
+	if [ ! -f "$$dir/go.mod" ]; then echo "kit-go-add: no go.mod in $$dir" >&2; exit 1; fi; \
+	command -v go >/dev/null 2>&1 || { echo "kit-go-add: go is not on PATH: install Go" >&2; exit 2; }; \
+	cd "$$dir" && go get "$$GO_ADD_PKG" && go mod tidy && { git diff --stat -- go.mod go.sum || true; }
 
 cache-trim: ## Trim Go caches now (age + size caps)
 	@bash scripts/kit/cache-trim.sh --force

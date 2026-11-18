@@ -6,8 +6,9 @@ It hangs on `check`, `check-full` and `check-docker` as a prerequisite in the ma
 recipe cannot route around, and `devkit update --apply` runs it after a render. It reads make's own database
 (`make -pRrq :`, nothing runs, never printed: it holds the environment) and judges six static rules, no time:
 V1 names (a required verb missing, a synonym of `check` defined), V2 shape (no recipe on a verb outside a managed file;
-`check` is `kit-verbs` plus CHECK_EXTRA; the `check-full` tier line; `e2e` only in the e2e module), V3 reach (`check` reaches
-no other verb, no `check-<scope>`, no docker goal), V4 stack paths (a project map row does not hide a stack's tests), V5 lists
+`check` is `kit-verbs` plus CHECK_EXTRA; the `check-full` tier line; `e2e` only in the e2e module; no `.WAIT` below make 4.4),
+V3 reach (`check` reaches no other verb, no `check-<scope>`, no docker goal; one make builds each target: a check-select target
+reaches no other and no gate item, and no recipe is reached by two of the gate's makes), V4 stack paths (a project map row does not hide a stack's tests), V5 lists
 (heavy_targets, light_targets, docker_targets name no verb), V6 orphans (a map row, an `@every` line or a list names a target
 the database lacks; CHECK_DOCKER with no check-docker rule). A refusal prints `file:line` and exits 1. A file whose first
 line carries another tool's managed header is not the project's to edit: its names are one `finding:` line, exit 0.
@@ -44,6 +45,7 @@ SPECIFIC = re.compile(r"^(\S+): +([A-Za-z_][\w.\-]*) *(?:::|:|\+|\?)?= *(.*)$")
 RULE = re.compile(r"^([^\s:#=][^:=]*):(?!=)(.*)$")
 VARIABLE = re.compile(r"^([A-Za-z_][\w.\-]*) *(?:::|:|\+|\?)?= ?(.*)$")
 FOREIGN_NAME = re.compile(r"-(check|test|lint|fmt|clean)$")
+WAIT = re.compile(r"(?<![\w.])\.WAIT(?![\w.])")
 LISTS = (("KIT_HEAVY_TARGETS", "heavy_targets"), ("KIT_LIGHT_TARGETS", "light_targets"), ("KIT_DOCKER_TARGETS", "docker_targets"))
 
 
@@ -92,15 +94,25 @@ class Database:
                         rule = self.rules.setdefault(name, Rule())
                         if var:
                             rule.vars.append((var[2], var[3]))
-                        else:
-                            rule.prereqs += plain[2].replace("|", " ").split()
+                        else:  # `.WAIT` (make 4.4) is an order mark, kept by the database as a word: no walk reads it
+                            rule.prereqs += [w for w in plain[2].replace("|", " ").split() if w != ".WAIT"]
 
     def defined(self, name: str) -> bool:
         rule = self.rules.get(name)
         return rule is not None and bool(rule.prereqs or rule.origin)
 
     def words(self, name: str) -> list[str]:
-        return self.vars.get(name, ("", ""))[0].split()
+        return [w for w in self.vars.get(name, ("", ""))[0].split() if w != ".WAIT"]
+
+    def reach(self, name: str, skip=()) -> set[str]:
+        """Every target `name` reaches through prerequisites, `skip` neither entered nor counted."""
+        seen, todo = set(), [name]
+        while todo:
+            for child in self.rules[node].prereqs if (node := todo.pop()) in self.rules else []:
+                if child not in seen and child not in skip:
+                    seen.add(child)
+                    todo.append(child)
+        return seen
 
 
 def load(name: str):
@@ -191,6 +203,12 @@ def v2(db: Database) -> list[str]:
         module = rule.origin and owner(rule.origin) == "devkit" and Path(rule.origin.rpartition(":")[0]).name == "kit-e2e.mk"
         if not module:
             out.append(f"{TAG} V2 {where(db, 'e2e')}: e2e is the e2e module's goal (mk/kit-e2e.mk); rename yours")
+    version = (db.words("MAKE_VERSION") or ["0"])[0]
+    if re.match(r"(?:[0-3]\.|4\.[0-3](?:\.|$))", version):  # `.WAIT` is a target name below 4.4, never an order mark
+        for path in project_files():
+            for number, line in enumerate(Path(path).read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+                if WAIT.search(line.split("#", 1)[0]):
+                    out.append(f"{TAG} V2 {path}:{number}: `.WAIT` needs GNU make 4.4 and this is {version}; list the pair in written order")
     return out
 
 
@@ -207,6 +225,42 @@ def v3(db: Database, docker: list[str]) -> list[str]:
                     "a docker goal" if child in docker else "")
             if kind:
                 out.append(f"{TAG} V3 {where(db, child)}: check reaches {child} through {parent}, {kind}")
+    return out
+
+
+def once(db: Database, root: Path, cs) -> list[str]:
+    """V3, one make per target (FB-1199): a check-select target that reaches, or is reached by, another or an item of
+    CHECK_EXTRA, CHECK_FULL or CHECK_DOCKER; a recipe that two of a gate's make processes reach (each target of
+    check-select is one make, the outer items another)."""
+    t = cs.tree(root, cs.map_files(root, []))
+    picked = [name for name in cs.plan(t, cs.load_rows(root, []), cs.load_registry(root, [], t.paths))[0] if name in db.rules]
+    skip = {"kit-verbs", "kit-select", "kit-docker-need"}
+    items = [w for key in ("CHECK_EXTRA", "CHECK_FULL", "CHECK_DOCKER") for w in db.words(key) if w not in picked and w not in skip]
+    reach = {name: db.reach(name, skip) for name in [*picked, *items]}
+    outer = set(items).union(*(reach[item] for item in items))
+    out, said = [], set()
+
+    def owner(x: str) -> str:
+        """The gate item `x` is reached from."""
+        return next(i for i in items if x in reach[i])
+
+    def refuse(a: str, b: str, how: str, x: str) -> None:
+        if (key := tuple(sorted((a, b)) + [x])) not in said:
+            said.add(key)
+            out.append(f"{TAG} V3 {where(db, a)}: {how} ({where(db, b)}); one make must build {x}")
+            out.append(f"next: list both in one group, in CHECK_FULL or one map row, so one make builds {x} once")
+    for name in picked:
+        for other in [o for o in picked if o != name and o in reach[name]] + [i for i in items if i in reach[name]]:
+            refuse(name, other, f"check-select target {name} reaches {other}", other)
+        if name in outer:
+            refuse(name, owner(name), f"check-select target {name} is reached by {owner(name)}, a gate item", name)
+    makes = [(name, reach[name]) for name in picked] + [("", outer)]
+    for at, (a, mine) in enumerate(makes):
+        for b, theirs in makes[at + 1:]:
+            for x in sorted((mine & theirs) - set(picked) - set(items)):
+                if x in db.rules and db.rules[x].origin:
+                    two = b or owner(x)
+                    refuse(a, two, f"{a} and {two} both reach {x}, a target with a recipe", x)
     return out
 
 
@@ -275,7 +329,7 @@ def main() -> int:
         db = database()
         goals = os.environ.get("KIT_GOALS", "").split()
         docker = ["check-docker", *cs.csv_names(root, "KIT_DOCKER_TARGETS")]
-        found = {"V1": v1(db, goals), "V2": v2(db), "V3": v3(db, docker), "V4": v4(root, cs), "V5": v5(root, cs), "V6": v6(db, root, cs)}
+        found = {"V1": v1(db, goals), "V2": v2(db), "V3": v3(db, docker) + once(db, root, cs), "V4": v4(root, cs), "V5": v5(root, cs), "V6": v6(db, root, cs)}
     except (cs.Stop, Unreadable) as stop:
         print("\n".join(stop.lines) if isinstance(stop, cs.Stop) else stop, file=sys.stderr)
         return 2

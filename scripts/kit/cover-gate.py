@@ -47,6 +47,9 @@ sys.dont_write_bytecode = True
 TAG = "cover-gate:"
 KINDS = ("changed", "whole")
 ROAD = "make check-full in this checkout"
+# FB-1179: a clean check-full reuses every unit a green row holds and sends no measure line, so a snapshot taken on a dirty tree (or
+# at another tree) is never replaced by it; `make sweep` is check-full with the store ignored, the one road that re-measures
+SWEEP = "if it reuses every unit and measures nothing, `make sweep` re-measures the whole tree"
 MEASURE_DIR = Path(".artifacts") / "coverage"
 STACK = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 FIGURE = re.compile(r"(\d+)(?:\.(\d))?\Z")
@@ -562,16 +565,16 @@ def cmd_raise(into: str | None = None) -> int:
         return 0
     for stack, path in files.items():
         if stack not in measures:
-            refusals.append(f"coverage-raise: {path} exists but this checkout holds no measure for {stack}: run {ROAD} first")
+            refusals.append(f"coverage-raise: {path} exists but this checkout holds no measure for {stack}: run {ROAD} first ({SWEEP})")
     heads = {}
     for stack, path in measures.items():
         lines = path.read_text(encoding="utf-8").splitlines()
         head = lines[0][len("# head "):].strip() if lines and lines[0].startswith("# head ") else ""
         heads[stack] = head
         if not head:
-            refusals.append(f"coverage-raise: {path} has no `# head` line: run {ROAD} first")
+            refusals.append(f"coverage-raise: {path} has no `# head` line: run {ROAD} first ({SWEEP})")
         elif head.endswith("+dirty"):
-            refusals.append(f"coverage-raise: the {stack} measure was taken on a dirty tree ({head}): commit or stash, then run {ROAD}")
+            refusals.append(f"coverage-raise: the {stack} measure was taken on a dirty tree ({head}): commit or stash, then run {ROAD} ({SWEEP})")
         else:
             code, now = git("rev-parse", "HEAD")
             if code != 0 or head != now.strip():
@@ -579,10 +582,10 @@ def cmd_raise(into: str | None = None) -> int:
                 names = [n for n in changed.split("\0") if n]
                 outside = [n for n in names if not n.startswith("docs/")]
                 if code != 0:
-                    refusals.append(f"coverage-raise: the {stack} measure head {head[:12]} is not in this history: run {ROAD}")
+                    refusals.append(f"coverage-raise: the {stack} measure head {head[:12]} is not in this history: run {ROAD} ({SWEEP})")
                 elif outside:
                     refusals.append(f"coverage-raise: the {stack} measure is stale: HEAD changed {outside[0]}"
-                                    f"{' and more' if len(outside) > 1 else ''} since it: run {ROAD}")
+                                    f"{' and more' if len(outside) > 1 else ''} since it: run {ROAD} ({SWEEP})")
     dirty = dirty_paths()
     if dirty:
         refusals.append(f"coverage-raise: the tree is dirty ({dirty[0]}{' and more' if len(dirty) > 1 else ''}): commit it, "

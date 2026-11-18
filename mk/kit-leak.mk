@@ -11,10 +11,6 @@
 #
 # No `$(shell)` at parse time (make 4.4 expands every exported command-line variable for each one): make's pid and start
 # time are read by the recipe ($$PPID is make: the recipe shell is make's child), never at parse time.
-#
-# FB-586: the gate runs last, so its recipe also ends the light-run telemetry: after the verdict (its stdout and exit code
-# unchanged) `check-select.py --record` writes the one row of a bare `make check`, with make's own wall time. The recorder
-# prints nothing, exits 0 and is skipped where the runner is absent.
 CHECK_EXTRA += kit-leak-gate
 
 .SECONDEXPANSION:
@@ -26,6 +22,4 @@ KIT_LEAK_MORE = $(if $(filter check-full check-docker,$(MAKECMDGOALS)),$(CHECK_F
 
 kit-leak-gate: export KIT_LEAK_GOALS := $(MAKECMDGOALS)
 kit-leak-gate: $$(filter-out kit-leak-gate,$$(CHECK_EXTRA)) $$(KIT_LEAK_MORE)
-	@bash scripts/kit/leak-gate.sh "$$PPID" "$$KIT_LEAK_GOALS"; rc=$$?; \
-	if [ -f scripts/kit/check-select.py ]; then python3 scripts/kit/check-select.py --record --make-pid "$$PPID" --exit "$$rc" --goals "$$KIT_LEAK_GOALS" || :; fi; \
-	exit "$$rc"
+	@bash scripts/kit/leak-gate.sh "$$PPID" "$$KIT_LEAK_GOALS"

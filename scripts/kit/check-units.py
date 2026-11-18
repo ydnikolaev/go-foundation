@@ -34,7 +34,6 @@ TAG = "check-units:"
 UNIT_S = 30  # a unit or target priced over this is slow; an unpriced one counts this much in the cut
 LIGHT_S = 180  # the light tier's budget of summed price
 WINDOW = 10  # the newest rows a price reads
-EXTRAS_S = 60  # check-select prints its extras line when this much wall ran outside the plan
 FENCE = "unix:///kit-no-docker/docker.sock"  # DOCKER_HOST of a light target: no such socket, so docker is red there
 FENCE_MARK = "kit-no-docker"
 SELECTOR = None  # check-select.py, loaded by path on first use (a test sets its own)
@@ -106,11 +105,6 @@ def cut(costs: dict[str, float], budget: float) -> tuple[list[str], list[str], f
         else:
             left.append(name)
     return taken, left, used
-
-
-def extras_line(extra_s: float, words: list[str]) -> str:
-    return (f"kit-select: extras {extra_s:.0f} s outside the plan; project words of CHECK_EXTRA: {' '.join(words) or 'none'}; "
-            "an @every line prices and reuses them")
 
 
 # ---- the driver ---------------------------------------------------------------------------------------------------

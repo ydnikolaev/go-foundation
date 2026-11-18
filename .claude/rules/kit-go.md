@@ -6,4 +6,5 @@
 - Tests: table-driven per package; no `//nolint`. [kit-go-lint,kit-go-grep]
 - Tests hermetic (`~/.devkit/current/standards/testing.md`): `t.Setenv`, `t.TempDir()`, an injected clock; wait on a condition, never `time.Sleep`. [kit-go-grep]
 - CLI e2e: run the built binary through `os/exec`, one testscript per behaviour, hermetic. ~
+- Dependencies: add one with the kit's `kit-go-add PKG=<module>[@version]` goal, never a bare `go get`. ~
 - Interactive prompts: `charm.land/huh`, gated on `term.IsTerminal`, with a headless path; none in a flags-only CLI. ~

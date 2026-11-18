@@ -7,7 +7,7 @@
 CHECK_EXTRA += kit-check
 CHECK_EXTRA += kit-harness
 
-.PHONY: kit-check kit-harness devkit-commit
+.PHONY: kit-check kit-harness
 
 kit-check: ## devkit-managed files carry no conflict markers; live workaround markers are listed
 	@bad=$$(grep -lE '^(<<<<<<<|>>>>>>>)( |$$)' $(wildcard mk/kit-*.mk) $(wildcard .claude/rules/kit-*.md) $$(find scripts/kit .devkit -type f 2>/dev/null) /dev/null 2>/dev/null); \
@@ -17,7 +17,7 @@ kit-check: ## devkit-managed files carry no conflict markers; live workaround ma
 	awk '{ id = $$1; n++; if (!(id in seen)) { seen[id] = 1; order[++k] = id } } \
 	END { if (n) { s = ""; for (i = 1; i <= k; i++) s = s (i > 1 ? " " : "") order[i]; printf "kit-check: ok (%d live workaround(s): %s)\n", n, s } else print "kit-check: ok" }'
 
-# The devkit CLI the kit targets call (`devkit commit`, `devkit rec`, `devkit doctor`); a repo or the CI names another.
+# The devkit CLI the kit targets call (`devkit rec`, `devkit doctor`); a repo or the CI names another.
 KIT_DEVKIT ?= devkit
 
 # The harness check: the project's own CLAUDE.md and rules agree with the platform and the repo (`devkit doctor`'s
@@ -28,19 +28,6 @@ KIT_HARNESS_NEED_DEVKIT = set -- $(KIT_DEVKIT); command -v "$$1" >/dev/null 2>&1
 kit-harness: ## project instructions agree with the platform's and the repo (harness.* rows; warn rows exit 0)
 	@$(KIT_HARNESS_NEED_DEVKIT); \
 	$(KIT_DEVKIT) doctor --row harness.conflict --row harness.names --row harness.refs --row harness.restate --row harness.budget --row harness.gates --row harness.a2a
-
-# One conventional commit of the named files (`devkit commit`). The values reach the recipe only through the
-# environment (never expanded into shell text), so a quote or `;` in M is data; P is split on spaces into paths.
-devkit-commit: export DEVKIT_COMMIT_TYPE := $(value TYPE)
-devkit-commit: export DEVKIT_COMMIT_SCOPE := $(value SCOPE)
-devkit-commit: export DEVKIT_COMMIT_M := $(value M)
-devkit-commit: export DEVKIT_COMMIT_P := $(value P)
-devkit-commit: export DEVKIT_COMMIT_CLOSES := $(value CLOSES)
-devkit-commit: ## Commit exactly the files in P as one conventional commit: make devkit-commit TYPE=fix SCOPE=x M="subject" P="a b" [CLOSES=FB-1]
-	@set -f; set --; \
-	[ -z "$$DEVKIT_COMMIT_SCOPE" ] || set -- "$$@" --scope="$$DEVKIT_COMMIT_SCOPE"; \
-	[ -z "$$DEVKIT_COMMIT_CLOSES" ] || set -- "$$@" --closes="$$DEVKIT_COMMIT_CLOSES"; \
-	$(KIT_DEVKIT) commit --type="$$DEVKIT_COMMIT_TYPE" --message="$$DEVKIT_COMMIT_M" "$$@" -- $$DEVKIT_COMMIT_P
 
 # This project's page of the host overview (`devkit overview`, standards/make.md §7): built first when missing or stale,
 # then opened. OVERVIEW_FLAGS passes more flags (`--no-open` prints the page path only).

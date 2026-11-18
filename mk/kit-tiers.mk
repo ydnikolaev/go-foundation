@@ -9,8 +9,7 @@
 # runner through the environment, never expanded into shell text. KIT_TIER is `full` only while check-full or check-docker
 # is being built: their target-specific `KIT_TIER := full` is inherited by every prerequisite, kit-select included, and
 # `export` hands that value (whatever its origin: the Makefile, the command line, the environment) to the recipe. The
-# runner accepts `full` and `sweep` only when make's goals name check-full or check-docker. Old callers (KIT_REUSE set, or
-# KIT_CHECK_BASE non-empty) get `make check-full` for a light run.
+# runner accepts `full` and `sweep` only when make's goals name check-full or check-docker.
 CHECK_EXTRA += kit-select
 export KIT_TIER
 
@@ -18,8 +17,8 @@ export KIT_TIER
 
 kit-select: export KIT_GOALS := $(MAKECMDGOALS)
 kit-select: export KIT_MAKE := $(MAKE)
-kit-select:
-	@KIT_MAKE_PID=$$PPID python3 scripts/kit/check-select.py
+kit-select:  # `+`: make's -O holds no recursive line, so each target's block prints as it ends; `make -n` is check-select's own
+	+@KIT_MAKE_PID=$$PPID python3 scripts/kit/check-select.py
 
 .PHONY: sweep
 

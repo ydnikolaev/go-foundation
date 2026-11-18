@@ -22,9 +22,10 @@
 #                              test cache off (R-271): exit 1 outside the flaky goal
 #          KIT_GO_FLAKY_COUNT  the flaky goal's run count N (make kit-go-test-flaky COUNT=<n>); exit 2 when it is no whole number >= 1
 #          KIT_GO_DB_IMPORTS   space-separated import paths that mark a database package (empty by default; a repo sets its helper's)
-#          KIT_GO_TEST_TAGS_LIGHT, KIT_GO_TEST_TAGS_FULL   build tags of each tier (env, else .devkit/config.env; comma or space list):
-#                              `//go:build integration` runs in check-full with KIT_GO_TEST_TAGS_FULL=integration (FB-1141); the full
-#                              tier always carries the tag `slow`
+#          KIT_GO_TEST_TAGS_LIGHT, KIT_GO_TEST_TAGS_FULL   build tags of each tier (environment only; comma or space list;
+#                              mk/kit-go.mk exports the project Makefile's variable of that name, FB-1193): `//go:build integration`
+#                              runs in check-full with `KIT_GO_TEST_TAGS_FULL = integration` in the Makefile (FB-1141); the full tier
+#                              always carries the tag `slow`
 #          KIT_GO_TEST_RUNNER  a command prefix, word-split, empty by default: it runs before `go test` in every module
 #                              (`KIT_GO_TEST_RUNNER="./wrap.sh"` runs `<repo>/wrap.sh go test ...`); a first word holding a slash and
 #                              not absolute is taken from the repo root, a bare word is found on PATH; echoed in the module line
@@ -109,7 +110,8 @@ tags_for() {
   for word in ${GOFLAGS:-}; do
     case "$word" in -tags=*|--tags=*) keep="${keep:+$keep,}${word#*=}" ;; esac
   done
-  if [ "$tier" = light ]; then extra="$(conf_val KIT_GO_TEST_TAGS_LIGHT)"; else extra="slow $(conf_val KIT_GO_TEST_TAGS_FULL)"; fi
+  # FB-1193: the environment only (the Makefile variable, exported by mk/kit-go.mk); .devkit/config.env is not read for the tags
+  if [ "$tier" = light ]; then extra="${KIT_GO_TEST_TAGS_LIGHT:-}"; else extra="slow ${KIT_GO_TEST_TAGS_FULL:-}"; fi
   extra="$(printf '%s' "$extra" | tr ' ' ',' | sed -e 's/,,*/,/g' -e 's/^,//' -e 's/,$//')"
   printf '%s' "${keep:+$keep${extra:+,}}$extra"
 }
