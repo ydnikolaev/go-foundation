@@ -1,0 +1,6 @@
+# <pkg>	<test>	<reason>: a skipped test check-full accepts (devkit go-testkit)
+units/testdb	TestRoundTrip	needs TESTDB_URL, an admin DSN of a Postgres 15+; run by hand with -v
+units/testdb	TestRoundTrip_TwoNamespacesAtOnce	needs TESTDB_URL, an admin DSN of a Postgres 15+; run by hand with -v
+units/testdb	TestRoundTrip_TwoConfigNamespacesOnOneDir	needs TESTDB_URL, an admin DSN of a Postgres 15+; run by hand with -v
+units/testdb	TestRoundTrip_PruneAndLeftover	needs TESTDB_URL, an admin DSN of a Postgres 15+; run by hand with -v
+units/testdb	TestRoundTrip_HalfBuiltTemplateIsRebuilt	needs TESTDB_URL, an admin DSN of a Postgres 15+; run by hand with -v
