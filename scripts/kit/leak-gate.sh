@@ -14,7 +14,8 @@
 #          run's id, label dev.$KIT_PROJECT.run=<make-pid> (FB-906: what the run starts gets it from $KIT_RUN_ID, which
 #          mk/kit-e2e.mk sets to make's pid (KIT_MAKE_PID, else $PPID); a container another session starts while make runs has no such label and is
 #          not counted, so a project's own target that starts a container passes `--label dev.<project>.run=$KIT_RUN_ID` or
-#          the gate cannot see it). KIT_PROJECT: the environment, else .devkit/config.env. A container that also carries
+#          the gate cannot see it). A network that carries the owner label and this run's id and is still present is a survivor too
+#          (FB-1147: the compose network of mk/kit-e2e.mk's run; docker network ls, no age rule). KIT_PROJECT: the environment, else .devkit/config.env. A container that also carries
 #          label dev.$KIT_PROJECT.shared=true (set by the project on a service worktrees share by design, in its own
 #          compose file; no knob here) is not a survivor: the gate prints `kit-leak: shared container <name> kept` for
 #          each one that would otherwise count, and kills nothing. Another project's key, or a value other than true,
@@ -208,6 +209,11 @@ else
       fi
     fi
   done <"$tmp/ids.sorted"
+  # FB-1147 rule 4: a network that carries this run's id is still there once the run is over, so its teardown did not work: red in the
+  # run that caused it, not eleven runs later. Presence counts, whatever it holds (a container on it shows above as well).
+  if run "$timeout_s" "$tmp/nets.out" docker network ls --filter "label=dev.$proj.owner=$proj" --filter "label=dev.$proj.run=$mkpid" --format '{{.ID}} {{.Name}}'; then
+    awk '{ printf "network %s  id %s  carries this run'"'"'s id\n", $2, $1 }' "$tmp/nets.out" >>"$survivors"
+  fi
 fi
 
 # ---- verdict ----

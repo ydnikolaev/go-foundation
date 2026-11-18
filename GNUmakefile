@@ -1,14 +1,23 @@
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
 # Queue shim (standards/make.md §2, R-141): GNU make reads this before Makefile. At MAKELEVEL 0 a command-line goal is
 # classed by name: a heavy goal with the host queue present, no HEAVY_RUN_SLOT and no -n/-q/-t queues the whole
-# invocation once through heavy_run (Makefile is not read here: the inner make reads it inside the hold); light and
-# unclassed goals run Makefile at HEAVY_RUN_CORES=2 GOMAXPROCS=2; dev goals run it untouched. A sub-make only reads
+# invocation once through heavy_run (Makefile is not read here: the inner make reads it inside the hold); a light or
+# unclassed goal (with a host queue, no slot, no -n/-q/-t, no dev goal) goes through `heavy_run run --no-wait --cores 2`: a
+# holder at once, never waited, so the queue counts every parallel close (DK-063; the project is heavy_run's own default,
+# as for a heavy goal) and runs at HEAVY_RUN_CORES=2 GOMAXPROCS=2; dev goals run Makefile untouched. A sub-make only reads
 # Makefile: it inherits its parent's decision. Sizes (queue_cores, a goal=cores map over it; the largest goal asked
 # wins) and the extra heavy names come from .devkit/config.env (needs make >= 4.2); a command-line or environment value
-# wins; `KIT_LIGHT_TARGETS` takes goals out of the heavy class (a name also heavy stays heavy). No `$(shell)`. Your rules go in Makefile, never here.
+# wins; `KIT_LIGHT_TARGETS` takes goals out of the heavy class (a name also heavy stays heavy). Dev goals are dev-up dev-down dev-status
+# run serve, the patterns dev-% %-run serve-% run-% watch% and the names of `KIT_DEV_TARGETS` (read as KIT_LIGHT_TARGETS is; a name
+# also heavy stays heavy): they never take a slot (FB-1087). No `$(shell)`. Your rules go in Makefile, never here.
 # A project's own docker goals are the `docker_targets` answer, never a Makefile variable: this shim classes before Makefile is read (FB-733).
 # Without the host queue (no heavy_run.py) it is inert: nothing queued, nothing exported. `kit_conf` is the one values
 # file the body reads: .devkit/config.env here, config/ops.env in a copy made by /devkit:apply-ops.
+# After Makefile is read, the branch that reads it adds the vocabulary's prerequisite-only lines (standards/make.md §1): `kit-verbs`
+# (scripts/kit/check-verbs.py) runs before check, check-full and (docker module on: mk/kit-docker.mk) check-docker whatever recipe the project gave them, and test, lint
+# and fmt exist in every repo (`test` runs the registered test targets, `lint` and `fmt` the project's LINT_ALL and FMT_ALL).
+# Those lines are read only in a kit render (`.devkit/config.env` exists): a copy made by /devkit:apply-ops has no kit scripts, so no vocabulary.
+# Old callers (KIT_REUSE set, or KIT_CHECK_BASE non-empty): a `check` goal is classed and queued as `check-full`.
 kit_conf := .devkit/config.env
 ifeq ($(MAKELEVEL),0)
 kit_comma := ,
@@ -23,12 +32,15 @@ kit_cores_docker := $(or $(KIT_QUEUE_CORES_DOCKER),$(call kit_val,KIT_QUEUE_CORE
 kit_list := $(subst $(kit_comma), ,$(or $(KIT_HEAVY_TARGETS),$(call kit_val,KIT_HEAVY_TARGETS)))
 kit_lights := $(subst $(kit_comma), ,$(or $(KIT_LIGHT_TARGETS),$(call kit_val,KIT_LIGHT_TARGETS)))
 kit_docker := check-docker $(subst $(kit_comma), ,$(or $(KIT_DOCKER_TARGETS),$(call kit_val,KIT_DOCKER_TARGETS)))
-kit_dev_names := dev-up dev-down dev-status run serve
+kit_dev_names := dev-up dev-down dev-status run serve dev-% %-run serve-% run-% watch%
+kit_devs := $(subst $(kit_comma), ,$(or $(KIT_DEV_TARGETS),$(call kit_val,KIT_DEV_TARGETS)))
 kit_light := $(filter-out $(kit_list),check lint fmt vet)
-kit_lit := $(filter-out $(filter $(kit_list) $(kit_docker),$(MAKECMDGOALS)),$(filter $(kit_lights),$(MAKECMDGOALS)))
-kit_heavy := $(filter-out $(kit_light) $(kit_dev_names) $(kit_lit),$(filter check-% %-check test test-% e2e% %-gate build build-% \
-  %-build image image-% %-image $(kit_list) $(kit_docker),$(MAKECMDGOALS)))
-kit_dev := $(filter $(kit_dev_names),$(MAKECMDGOALS))
+kit_old := $(if $(filter-out undefined,$(origin KIT_REUSE))$(KIT_CHECK_BASE),$(filter check,$(MAKECMDGOALS)))
+kit_goals := $(if $(kit_old),$(patsubst check,check-full,$(MAKECMDGOALS)),$(MAKECMDGOALS))
+kit_lit := $(filter-out $(filter $(kit_list) $(kit_docker),$(kit_goals)),$(filter $(kit_lights),$(kit_goals)))
+kit_dev := $(filter-out $(filter $(kit_list) $(kit_docker),$(kit_goals)),$(filter $(kit_dev_names) $(kit_devs),$(kit_goals)))
+kit_heavy := $(filter-out $(kit_light) $(kit_dev) $(kit_lit),$(filter check-% %-check test test-% e2e% %-gate build build-% \
+  %-build image image-% %-image sweep $(kit_list) $(kit_docker),$(kit_goals)))
 ifneq ($(kit_dev),)
 ifneq ($(kit_heavy),)
 $(error $(firstword $(kit_dev)) is a dev goal and $(firstword $(kit_heavy)) is heavy: run them apart)
@@ -44,14 +56,16 @@ kit_cores := $(call kit_maxof,$(foreach g,$(kit_heavy),$(call kit_goal_cores,$(g
 endif
 kit_dry := $(findstring n,$(firstword -$(MAKEFLAGS)))$(findstring q,$(firstword -$(MAKEFLAGS)))$(findstring t,$(firstword -$(MAKEFLAGS)))
 KIT_HEAVY_RUN := $(wildcard $(or $(DEVKIT_HOST),$(HOME)/Developer/_ops)/scripts/heavy_run.py)
-kit_outer := $(if $(kit_heavy),$(if $(HEAVY_RUN_SLOT)$(kit_dry),,$(KIT_HEAVY_RUN)))
+kit_outer := $(if $(HEAVY_RUN_SLOT)$(kit_dry),,$(if $(kit_heavy),$(KIT_HEAVY_RUN),$(if $(kit_dev)$(if $(MAKECMDGOALS),,x),,$(KIT_HEAVY_RUN))))
+kit_wait := $(if $(kit_heavy),,--no-wait )
+kit_slot_cores := $(if $(kit_heavy),$(kit_cores),2)
 endif
 
 ifneq ($(kit_outer),)
 kit_first := $(firstword $(MAKECMDGOALS))
 .PHONY: $(MAKECMDGOALS)
 $(kit_first):
-	+@python3 $(KIT_HEAVY_RUN) run --label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy)) --cores $(kit_cores) -- $(MAKE) --no-print-directory $(MAKECMDGOALS)
+	+@python3 $(KIT_HEAVY_RUN) run $(kit_wait)--label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy) $(MAKECMDGOALS)) --cores $(kit_slot_cores) -- $(MAKE) --no-print-directory $(kit_goals)
 $(filter-out $(kit_first),$(MAKECMDGOALS)): $(kit_first) ;
 else
 ifeq ($(MAKELEVEL)$(HEAVY_RUN_SLOT)$(kit_dev)$(if $(KIT_HEAVY_RUN),,x),0)
@@ -59,4 +73,14 @@ export HEAVY_RUN_CORES := $(if $(kit_heavy),$(kit_cores),2)
 export GOMAXPROCS := $(HEAVY_RUN_CORES)
 endif
 include Makefile
+ifneq ($(wildcard .devkit/config.env),)
+.PHONY: kit-verbs test lint fmt
+kit-verbs: export KIT_GOALS := $(MAKECMDGOALS)
+kit-verbs: export KIT_MAKE := $(MAKE)
+kit-verbs: ; @python3 scripts/kit/check-verbs.py
+check check-full $(if $(wildcard mk/kit-docker.mk),check-docker): kit-verbs
+test: kit-test
+lint: $(LINT_ALL)
+fmt: $(FMT_ALL)
+endif
 endif

@@ -9,15 +9,13 @@ CHECK_EXTRA += kit-harness
 
 .PHONY: kit-check kit-harness devkit-commit
 
-kit-check: ## devkit-managed files carry no conflict markers; no workaround marker names a fix this kit already has
+kit-check: ## devkit-managed files carry no conflict markers; live workaround markers are listed
 	@bad=$$(grep -lE '^(<<<<<<<|>>>>>>>)( |$$)' $(wildcard mk/kit-*.mk) $(wildcard .claude/rules/kit-*.md) $$(find scripts/kit .devkit -type f 2>/dev/null) /dev/null 2>/dev/null); \
 	if [ -n "$$bad" ]; then echo "kit-check: conflict markers in managed files:" >&2; echo "$$bad" >&2; exit 1; fi; \
 	if ! git rev-parse --is-inside-work-tree >/dev/null 2>&1; then echo "kit-check: ok (workaround scan skipped: no git work tree)"; exit 0; fi; \
-	git grep -I -n -o -E 'devkit-workaroun[d]: FB-[0-9]+' 2>/dev/null | sed 's/^\(.*\):\([0-9][0-9]*\):[^:]*: \(FB-[0-9]*\)$$/\3 \1:\2/' | \
-	awk -v list=.devkit/fixed-feedback 'BEGIN { while ((getline l < list) > 0) if (l ~ /^FB-[0-9]+ [^ ]+[ \t]*$$/) { split(l, a, " "); fixed[a[1]] = a[2] } } \
-	{ id = $$1; at = $$0; sub(/^[^ ]+ /, "", at); n++; if (!(id in seen)) { seen[id] = 1; order[++k] = id } \
-	  if (id in fixed) { print "kit-check: " id " is fixed in " fixed[id] " (installed); remove the workaround at " at > "/dev/stderr"; red = 1 } } \
-	END { if (red) exit 1; if (n) { s = ""; for (i = 1; i <= k; i++) s = s (i > 1 ? " " : "") order[i]; printf "kit-check: ok (%d live workaround(s): %s)\n", n, s } else print "kit-check: ok" }'
+	git grep -I -n -o -E '^[[:blank:]]*(#|//|/\*|\*|--|;|<!--)[[:blank:]]*devkit-workaroun[d]: FB-[0-9]+' 2>/dev/null | sed 's/^\(.*\):\([0-9][0-9]*\):[^:]*: \(FB-[0-9]*\)$$/\3 \1:\2/' | \
+	awk '{ id = $$1; n++; if (!(id in seen)) { seen[id] = 1; order[++k] = id } } \
+	END { if (n) { s = ""; for (i = 1; i <= k; i++) s = s (i > 1 ? " " : "") order[i]; printf "kit-check: ok (%d live workaround(s): %s)\n", n, s } else print "kit-check: ok" }'
 
 # The devkit CLI the kit targets call (`devkit commit`, `devkit rec`, `devkit doctor`); a repo or the CI names another.
 KIT_DEVKIT ?= devkit
@@ -30,14 +28,6 @@ KIT_HARNESS_NEED_DEVKIT = set -- $(KIT_DEVKIT); command -v "$$1" >/dev/null 2>&1
 kit-harness: ## project instructions agree with the platform's and the repo (harness.* rows; warn rows exit 0)
 	@$(KIT_HARNESS_NEED_DEVKIT); \
 	$(KIT_DEVKIT) doctor --row harness.conflict --row harness.names --row harness.refs --row harness.restate --row harness.budget --row harness.gates --row harness.a2a
-
-# The project's own steps of `devkit stop` (STOP §3): a project or an `mk/<area>.mk` adds `STOP_STEPS += <target>`; the verb
-# runs `make <target>` per word, after the worktrees and before the containers. Word order follows include order, so a step
-# must not depend on another. The value reaches the recipe through the environment only.
-.PHONY: devkit-stop-steps
-devkit-stop-steps: export DEVKIT_STOP_STEPS = $(STOP_STEPS)
-devkit-stop-steps: ## Print the project's STOP_STEPS (the targets `devkit stop` runs), one line
-	@printf '%s\n' "$$DEVKIT_STOP_STEPS"
 
 # One conventional commit of the named files (`devkit commit`). The values reach the recipe only through the
 # environment (never expanded into shell text), so a quote or `;` in M is data; P is split on spaces into paths.

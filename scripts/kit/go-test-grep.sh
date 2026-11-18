@@ -3,10 +3,12 @@
 # Purpose: the go pack's grep gates (FB-725, R-214): no `//nolint` and no `time.Sleep(` in a _test.go file.
 #          A suppression in a test hides a finding instead of fixing it; a sleep is a race waiting for a slow host.
 #          Code keeps the explained `//nolint:<linter> // <why>`: .golangci.yml (nolintlint) polices it, not this gate.
+#          A third pattern, `count` (R-271): a line with `go test` and `-count` in the project's own test lines (the root Makefile, mk/*.mk but
+#          mk/kit-*, scripts/ but scripts/kit/, config/check-map, .devkit/config.env) turns the test cache off; use `make kit-go-test-flaky COUNT=<n>`.
 # Usage:   scripts/kit/go-test-grep.sh     (whole tree: tracked and untracked-not-ignored *.go, hits only in *_test.go; vendor/ and testdata/ skipped)
-# Output:  one `file:line:text` line per hit on stderr, one summary line. Exit 0 clean, 1 a hit.
+# Output:  one `file:line:text` line per hit on stderr, one summary line. Exit 0 clean, 1 a hit. A red run with a `count` hit ends with a `next:` pointer.
 # The one hatch is the adoption ceiling (FB-932, R-259), which only goes down: with config/go-grep.ceiling (project-owned, written once by
-#          `make kit-go-baseline`) the hits are counted per package and pattern (`nolint`, `sleep`) and judged by go-ceiling.sh: a key over its
+#          `make kit-go-baseline`) the hits are counted per package and pattern (`nolint`, `sleep`, `count`) and judged by go-ceiling.sh: a key over its
 #          ceiling is red, a ceiling above its count says `lower it to <n>`. KIT_GO_CEILING=write writes that file (refuses one that exists).
 #          Without the file every hit is red, and a red run ends with a pointer to standards/adopt.md#go-baseline.
 #          Fix the finding, or poll with a deadline (a channel, a ticker, `eventually`) not a sleep.
@@ -57,18 +59,42 @@ while IFS= read -r -d '' f; do
   esac
 done < <(git ls-files -co --exclude-standard -z -- '*.go')
 
+# The `count` pattern: a `go test` line with `-count` in the project's own test lines (not the managed kit files). Not in the Go file figure.
+counthits=0
+while IFS= read -r -d '' f; do
+  [ -f "$f" ] || continue  # tracked but deleted from the work tree
+  case "$f" in
+    Makefile|config/check-map|.devkit/config.env) ;;
+    mk/kit-*) continue ;;
+    mk/*.mk) case "${f#mk/}" in */*) continue ;; esac ;;
+    scripts/kit/*) continue ;;
+    scripts/*) ;;
+    *) continue ;;
+  esac
+  out="$(grep -nIE 'go test.*-count([=[:space:]]|$)|-count([=[:space:]]|$).*go test' -- "$f" 2>/dev/null || true)"
+  if [ -n "$out" ]; then
+    while IFS= read -r line; do
+      hit "$f" count "$line" "-count in a go test line disables the test cache: use make kit-go-test-flaky COUNT=<n>"
+      counthits=$((counthits + 1))
+    done <<<"$out"
+  fi
+done < <(git ls-files -co --exclude-standard -z)
+
 if [ "$mode" = ceiling ]; then
   if [ "$write" -eq 1 ]; then
     printf '%s' "$rows" | KIT_CEILING_TOOL="go-test-grep.sh" bash "$here/go-ceiling.sh" kit-go-grep "$CEILING" --write
   else
     printf '%s' "$rows" | KIT_CEILING_TOOL="go-test-grep.sh" bash "$here/go-ceiling.sh" kit-go-grep "$CEILING"
   fi
-  exit $?
+  rc=$?
+  if [ "$rc" -ne 0 ] && [ "$counthits" -gt 0 ]; then echo "next: standards/testing-go.md#adopt-in-a-devkit-repo" >&2; fi
+  exit "$rc"
 fi
 
 if [ "$hits" -gt 0 ]; then
   echo "go-test-grep: $hits hit(s) in $files Go file(s): red" >&2
   echo "kit-go-grep: adopting with old findings? standards/adopt.md#go-baseline" >&2
+  if [ "$counthits" -gt 0 ]; then echo "next: standards/testing-go.md#adopt-in-a-devkit-repo" >&2; fi
   exit 1
 fi
 echo "go-test-grep: $files Go file(s) clean"

@@ -7,7 +7,7 @@
 # File:    <file> (project-owned, config/go-lint.ceiling or config/go-grep.ceiling): `<pkg> <check> <max>`, `#` comments, `.` the repo root.
 #          <pkg> is the directory of the finding's file, one key space over every go.mod dir; an absent key has ceiling 0.
 # Check:   a key over its max prints every finding line of the key, then `<n> > <max>: a new finding`; a max above the count prints
-#          `lower it to <n>`; a malformed line is named. A `typecheck` finding is always red: a build error is never baselined.
+#          `lower it to <n>` and the exact edit (`edit <file>: <pkg> <check> <n>`, FB-970); a malformed line is named. A `typecheck` finding is always red: a build error is never baselined.
 #          Exit 0 every key at its ceiling, 1 a key off it, 2 usage or a missing file.
 # --write: writes <file> from the counts (sorted, with a header: date, short HEAD, tool from KIT_CEILING_TOOL); refuses (exit 1) a file that
 #          exists and any `typecheck` finding. Exit 0 written, 1 refused.
@@ -97,7 +97,7 @@ out="$(
       } else if (n > m) {
         printf "%s", buf
         finding(tag ": " pkg " " chk " " n " > " m ": a new finding; fix it (a raise is a hand edit of " file ")")
-      } else if (m > n) finding(tag ": " pkg " " chk " ceiling " m " > count " n ": lower it to " n)
+      } else if (m > n) finding(tag ": " pkg " " chk " ceiling " m " > count " n ": lower it to " n " (edit " file ": " pkg " " chk " " n ")")
     }
     BEGIN {
       ln = 0
@@ -132,7 +132,7 @@ out="$(
         q = corder[j]
         if (q in seen) continue
         keys++
-        if (cmax[q] > 0) finding(tag ": " cpkg[q] " " cchk[q] " ceiling " cmax[q] " > count 0: lower it to 0")
+        if (cmax[q] > 0) finding(tag ": " cpkg[q] " " cchk[q] " ceiling " cmax[q] " > count 0: lower it to 0 (edit " file ": " cpkg[q] " " cchk[q] " 0)")
       }
       print "#sum " bad + 0 " " keys + 0
     }

@@ -1,20 +1,27 @@
 #!/usr/bin/env bash
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
-# Purpose: keep the repo-local Go caches small. Safe when .cache/ does not exist yet.
+# Purpose: keep the repo-local Go caches and the Go temp dir small. Safe when .cache/ does not exist yet.
 # Usage:   scripts/kit/cache-trim.sh [--dry-run] [--force] [--auto]
 #   --auto     run at most once per 24h per checkout family (stamp <main checkout>/.artifacts/stamps/cache-trim, beside the
 #              shared caches: a trim from any worktree counts; an old per-checkout stamp is ignored, never deleted);
-#              --force ignores the stamp
+#              --force ignores the stamp; a build cache over 2x its cap (hard, DK-071) bypasses it
 #   lock       one trim at a time per family (mkdir <stamp dir>/cache-trim.lock, held for the run, stale after 1h): the
 #              loser prints one skip line, exit 0, no stamp; --force does not override. Builds are not locked (see busy)
 #   --dry-run  report what would happen, change nothing, write no stamp
 #   busy       a go build|test|vet|install|generate or golangci-lint run of this user with its cwd in this checkout
 #              or one of its worktrees: prints one skip line, exit 0, touches nothing (no stamp); --force does not override
+#   hard       (DK-071) the build cache (GOCACHE) is over 2x KIT_CACHE_CAP_GB: the stamp skip does not starve the size. Not busy:
+#              the normal run, stamp bypassed under --auto. Busy (FB-1152): deferred whole, one line, nothing deleted, no stamp,
+#              for --force and a missing cwd reader too; no GOCACHE file goes while a go process of this family runs
 # Env:     KIT_CACHE_AGE_DAYS=7  KIT_CACHE_CAP_GB=5 (build)  KIT_MODCACHE_CAP_GB=5  KIT_GOLANGCI_CAP_GB=1
-#          GOCACHE GOMODCACHE GOTMPDIR GOLANGCI_LINT_CACHE (default: <main checkout>/.cache/go/{build,mod,tmp}, .cache/golangci)
+#          GOCACHE GOMODCACHE GOTMPDIR GOLANGCI_LINT_CACHE (default: <main checkout>/.cache/go/{build,mod}, .cache/golangci, and
+#          GOTMPDIR <base>/devkit-go/<main checkout path, `_` doubled then `/` made `_-`>, the Makefile's path)
+#          DEVKIT_TMP_BASE (<base>; default $HOME/Developer/.tmp when $HOME/Developer is a directory, else ${TMPDIR:-/tmp})
 #          KIT_STAMP_DIR (default <main checkout>/.artifacts/stamps)
-# Safety:  every cache path must lie strictly inside <main checkout>/.cache/ (main from `git rev-parse
-#          --git-common-dir`); otherwise one line is printed and nothing is touched (exit 1).
+# Safety:  GOCACHE, GOMODCACHE and GOLANGCI_LINT_CACHE must lie strictly inside <main checkout>/.cache/ (main from `git rev-parse
+#          --git-common-dir`); GOTMPDIR strictly inside <main checkout>/.cache/ (the old layout, still accepted) or strictly
+#          inside <base>/devkit-go/. Paths are canonicalised first, so a symlink or `..` escape is refused. Anything else: one line
+#          is printed and nothing is touched (exit 1).
 # Output:  one summary line. Exit 0 (64 on bad usage, 1 on a refused path).
 set -uo pipefail
 
@@ -42,7 +49,14 @@ stamp="$stamp_dir/cache-trim"
 lock="$stamp_dir/cache-trim.lock"
 : "${GOCACHE:=$main/.cache/go/build}"
 : "${GOMODCACHE:=$main/.cache/go/mod}"
-: "${GOTMPDIR:=$main/.cache/go/tmp}"
+# DK-061: GOTMPDIR lives outside the work tree and outside /var/folders (Spotlight indexes it): <base>/devkit-go/<leaf>,
+# the same path the Makefile makes (<base>: DEVKIT_TMP_BASE, else $HOME/Developer/.tmp when $HOME/Developer is a directory, else
+# ${TMPDIR:-/tmp}; the leaf is the main checkout path with each `_` doubled and then each `/` made `_-`: prefix-free, so injective, no hash).
+if [ -n "${DEVKIT_TMP_BASE:-}" ]; then tmp_base="${DEVKIT_TMP_BASE%/}"
+elif [ -n "${HOME:-}" ] && [ -d "$HOME/Developer" ]; then tmp_base="${HOME%/}/Developer/.tmp"
+else tmp_base="${TMPDIR:-/tmp}"; tmp_base="${tmp_base%/}"; fi
+go_key="$(printf '%s' "$main" | sed -e 's/_/__/g' -e 's#/#_-#g')"
+: "${GOTMPDIR:=$tmp_base/devkit-go/$go_key}"
 : "${GOLANGCI_LINT_CACHE:=$main/.cache/golangci}"
 export GOCACHE GOMODCACHE GOTMPDIR GOLANGCI_LINT_CACHE
 
@@ -54,17 +68,48 @@ canon() {
   printf '%s%s' "$d" "$rest"
 }
 allowed="$(canon "$main")/.cache"
+allowed_tmp="$(canon "$tmp_base")/devkit-go"
 for var in GOCACHE GOMODCACHE GOTMPDIR GOLANGCI_LINT_CACHE; do
   c="$(canon "${!var}")" || c=""
   case "$c" in
     ""|*/..|*/../*) c="" ;;
     "$allowed"/*) continue ;;
+    "$allowed_tmp"/*) [ "$var" = GOTMPDIR ] && continue ;;
   esac
-  echo "cache-trim: refusing $var=${!var}: not inside $allowed/ (nothing touched)" >&2
+  if [ "$var" = GOTMPDIR ]; then where="$allowed/ or $allowed_tmp/"; else where="$allowed/"; fi
+  echo "cache-trim: refusing $var=${!var}: not inside $where (nothing touched)" >&2
   exit 1
 done
 
-if [ "$auto" -eq 1 ] && [ "$force" -eq 0 ] && [ -f "$stamp" ] && [ -n "$(find "$stamp" -mtime -1 -print 2>/dev/null)" ]; then
+kb() { if [ -d "$1" ]; then du -sk "$1" 2>/dev/null | awk '{print $1}'; else echo 0; fi; }
+over() { awk -v kb="$1" -v gb="$2" -v f="${3:-1}" 'BEGIN { exit !(kb > f * gb * 1048576) }'; }   # over <size_kb> <cap_gb> [factor]
+human() { awk -v kb="$1" 'BEGIN { printf "%.1fM", kb / 1024 }'; }
+
+actions=""
+note() { actions="${actions:+$actions, }$1"; }
+verb="removed"; [ "$dry" -eq 1 ] && verb="would remove"
+
+# DK-071: hard = the build cache is over 2x its cap. Measured on first use only (a normal fresh run pays no du before the
+# stamp check), then kept. Only the build cache counts; the mod and golangci caches keep their plain caps.
+hard_v=""
+hard() {
+  if [ -z "$hard_v" ]; then
+    hard_v=1
+    if [ -d "$GOCACHE" ] && over "$(kb "$GOCACHE")" "$build_cap" 2; then hard_v=0; fi
+  fi
+  return "$hard_v"
+}
+finish() { # the shared tail: stamp (not on a dry-run) and the one summary line
+  if [ "$dry" -eq 0 ]; then
+    mkdir -p "$stamp_dir" && touch "$stamp"
+    # .artifacts/ ignores itself, so a repo needs no .gitignore edit for it
+    case "$stamp_dir" in "$main/.artifacts"|"$main/.artifacts/"*) [ -f "$main/.artifacts/.gitignore" ] || printf '*\n' >"$main/.artifacts/.gitignore" ;; esac
+  fi
+  local pre=""; [ "$dry" -eq 1 ] && pre=" (dry-run)"
+  echo "cache-trim${pre}: ${actions:-nothing to trim} | build $(human "$(kb "$GOCACHE")") mod $(human "$(kb "$GOMODCACHE")") golangci $(human "$(kb "$GOLANGCI_LINT_CACHE")")"
+}
+
+if [ "$auto" -eq 1 ] && [ "$force" -eq 0 ] && [ -f "$stamp" ] && [ -n "$(find "$stamp" -mtime -1 -print 2>/dev/null)" ] && ! hard; then
   echo "cache-trim: skipped (ran within the last 24h)"
   exit 0
 fi
@@ -87,21 +132,30 @@ fi
 # Busy guard (FB-158): a go build/test/vet/install/generate or `golangci-lint run` of this user, with its working
 # directory in this checkout family (the main checkout or any worktree git lists), may be using these caches. Then the
 # run changes nothing at all (caches, GOTMPDIR and the stamp stay) and the next --auto run tries again; --force does
-# not override it. pgrep and lsof only read. A live pid whose cwd cannot be read counts as busy (skipping is the safe
-# side); one that ended after pgrep listed it does not (a host shared with other runs sees many short go processes).
-# `go run` is not in the set: it lives as long as a dev server and would starve the trim.
-cwd_of() { # cwd_of <pid>: its working directory, or nothing
-  local c=""
-  if [ -e "/proc/$1/cwd" ]; then c="$(readlink "/proc/$1/cwd" 2>/dev/null)"; fi
-  if [ -z "$c" ] && command -v lsof >/dev/null 2>&1; then c="$(lsof -a -p "$1" -d cwd -Fn 2>/dev/null | sed -n 's/^n//p' | sed -n 1p)"; fi
-  printf '%s' "$c"
+# not override it. pgrep and the cwd reader (proc-cwd.py, one run per scan for every pid pgrep listed; no lsof) only read.
+# A live pid whose cwd cannot be read counts as busy (skipping is the safe side); one that ended after pgrep listed it does
+# not (a host shared with other runs sees many short go processes). A missing reader or python3 reads every pid as
+# unreadable. `go run` is not in the set: it lives as long as a dev server and would starve the trim.
+reader="${KIT_PROC_CWD:-$(cd "$(dirname "$0")" && pwd)/proc-cwd.py}"
+cands="$(pgrep -u "$(id -u)" -f '(^|/)go (build|test|vet|install|generate)( |$)|(^|/)golangci-lint run( |$)' 2>/dev/null || true)"
+cwds=""; noreader=0
+if [ -n "$cands" ]; then
+  if [ -f "$reader" ] && command -v python3 >/dev/null 2>&1; then
+    cand_arr=()
+    while IFS= read -r p; do [ -n "$p" ] && cand_arr+=("$p"); done <<<"$cands"
+    cwds="$(python3 "$reader" "${cand_arr[@]}" 2>/dev/null || true)"   # <pid> <cwd> lines, one per readable pid
+  else
+    noreader=1
+  fi
+fi
+cwd_of() { # cwd_of <pid>: its working directory from the one reader run above, or nothing
+  printf '%s\n' "$cwds" | sed -n "s/^$1 //p" | sed -n 1p
 }
 busy_pid() { # prints the first busy pid and returns 0, else returns 1
-  local re='(^|/)go (build|test|vet|install|generate)( |$)|(^|/)golangci-lint run( |$)'
   local fam=() w c p r
   c="$(canon "$main")" && [ -n "$c" ] && fam+=("$c")
   while IFS= read -r w; do c="$(canon "$w")" && [ -n "$c" ] && fam+=("$c"); done < <(git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p')
-  for p in $(pgrep -u "$(id -u)" -f "$re" 2>/dev/null); do
+  for p in $cands; do
     c="$(cwd_of "$p")"
     if [ -z "$c" ]; then
       kill -0 "$p" 2>/dev/null || continue   # ended between pgrep and the read: nothing left to protect (FB-158)
@@ -115,18 +169,22 @@ busy_pid() { # prints the first busy pid and returns 0, else returns 1
   return 1
 }
 if bp="$(busy_pid)"; then
+  # FB-1152: a hard run does not delete anything while go runs. DK-071 trimmed the build files untouched for an hour on the claim that
+  # go touches an entry it uses at most hourly; a long `go test` of a big cache, or a build that reads an entry once, loses a file it
+  # is about to open and fails with a missing cache file. The run is deferred whole: no file, no clean, no stamp, so the next
+  # run (when go has ended) takes the hard path again; --force does not override it.
+  if hard; then
+    pre=""; [ "$dry" -eq 1 ] && pre=" (dry-run)"
+    echo "cache-trim${pre}: deferred (go running, pid $bp; build cache over 2x cap): nothing deleted until it ends"
+    exit 0
+  fi
+  if [ "$noreader" -eq 1 ]; then echo "cache-trim: no cwd reader ($reader): skipped"; exit 0; fi
   pre=""; [ "$dry" -eq 1 ] && pre=" (dry-run)"
   echo "cache-trim${pre}: skipped (go or golangci-lint running in this checkout, pid $bp)"
   exit 0
 fi
 
-kb() { if [ -d "$1" ]; then du -sk "$1" 2>/dev/null | awk '{print $1}'; else echo 0; fi; }
-over() { awk -v kb="$1" -v gb="$2" 'BEGIN { exit !(kb > gb * 1048576) }'; }   # over <size_kb> <cap_gb>
-human() { awk -v kb="$1" 'BEGIN { printf "%.1fM", kb / 1024 }'; }
-
-actions=""
-note() { actions="${actions:+$actions, }$1"; }
-verb="removed"; [ "$dry" -eq 1 ] && verb="would remove"
+hard && note "build cache over 2x cap"
 
 # 1. build-cache entry files past the age limit
 aged=0
@@ -162,11 +220,5 @@ if [ -d "$GOTMPDIR" ]; then
 fi
 [ "$tmp_n" -gt 0 ] && note "$verb $tmp_n tmp entries >1d"
 
-if [ "$dry" -eq 0 ]; then
-  mkdir -p "$stamp_dir" && touch "$stamp"
-  # .artifacts/ ignores itself, so a repo needs no .gitignore edit for it
-  case "$stamp_dir" in "$main/.artifacts"|"$main/.artifacts/"*) [ -f "$main/.artifacts/.gitignore" ] || printf '*\n' >"$main/.artifacts/.gitignore" ;; esac
-fi
-pre=""; [ "$dry" -eq 1 ] && pre=" (dry-run)"
-echo "cache-trim${pre}: ${actions:-nothing to trim} | build $(human "$(kb "$GOCACHE")") mod $(human "$(kb "$GOMODCACHE")") golangci $(human "$(kb "$GOLANGCI_LINT_CACHE")")"
+finish
 exit 0

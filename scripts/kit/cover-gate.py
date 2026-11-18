@@ -19,10 +19,11 @@ refused, both named), and a row moved between files is neither a removal nor a n
 A unit is a repo-relative dir (`.` is the root). A figure is integer tenths, `covered * 1000 // total`: no float, no slack.
 
 `check` reads lines `<unit> <covered> <total> <changed|whole>`. A floored unit may not fall below its floor; a unit new at
-the diff base with statements and no covered statement is refused (also with no floors file). `--whole` marks a run over
-the whole tree: it also writes the snapshot `.artifacts/coverage/<stack>.measure` that `raise` reads.
+the diff base with statements and no covered statement is refused (also with no floors file). `--whole` marks a run of the full tier:
+it also writes the snapshot `.artifacts/coverage/<stack>.measure` that `raise` reads, merged over the last one (a package the
+driver reused sends no line; a row whose dir is gone drops). A floor row with no line is stale only when its dir is gone.
 `config` (run by the change selector on every check): each floors file parses, and against the table at the diff base
-(KIT_COVER_BASE, else check-select.py's base) a floor is not lowered, a row whose dir stands is not removed, and a table
+(KIT_COVER_BASE, else the tree of check-select.py's newest green run) a floor is not lowered, a row whose dir stands is not removed, and a table
 holding floors is not deleted, unless a new comment gives the reason.
 `raise` only raises: from the snapshot of this checkout, never lowers, never commits, refuses a lane branch, a stale or
 dirty snapshot and a dirty tree. A raised floor is written to the file that holds the row; a new unit goes to the stack file,
@@ -214,7 +215,7 @@ def load_selector():
 
 
 def resolve_base() -> str | None:
-    """KIT_COVER_BASE (the selector sets it once per gate), else the selector's own base_of; None when there is none."""
+    """KIT_COVER_BASE (the selector sets it per target), else the selector's base_tree(); None when there is none."""
     given = os.environ.get("KIT_COVER_BASE", "").strip()
     if given:
         return given
@@ -222,9 +223,8 @@ def resolve_base() -> str | None:
         selector = load_selector()
         if selector is None:
             return None
-        top = selector.git_try("rev-parse", "--show-toplevel")
-        return selector.base_of(Path(top or os.getcwd()), "")[1]
-    except Exception:  # a Stop (no base, a git failure) or an unreadable selector: no base
+        return selector.base_tree()
+    except Exception:  # a Stop (a git failure) or an unreadable selector: no base
         return None
 
 
@@ -273,6 +273,16 @@ def atomic_write(path: Path, text: str) -> None:
             tmp.unlink()
 
 
+def last_snapshot(stack: str) -> list[tuple[str, int, int, str]]:
+    """The rows of this checkout's last whole-tree measure of `stack`: a run that reuses packages measures only the others,
+    so the snapshot `raise` reads keeps the rows of the ones it did not run. Unreadable: none."""
+    path = MEASURE_DIR / f"{stack}.measure"
+    try:
+        return parse_measure(path.read_text(encoding="utf-8"), str(path))
+    except (OSError, UnicodeDecodeError, Usage):
+        return []
+
+
 def cmd_check(stack: str, whole: bool) -> int:
     if not STACK.fullmatch(stack):
         raise Usage(f"--stack {stack!r}: want lowercase letters, digits and dashes")
@@ -284,8 +294,10 @@ def cmd_check(stack: str, whole: bool) -> int:
     exempt = floors.exempt if floors else {}
     floor_of = floors.floors if floors else {}
     if whole:
+        merged = {u: (u, c, t, k) for u, c, t, k in last_snapshot(stack) if os.path.isdir(u)}
+        merged.update({u: (u, c, t, k) for u, c, t, k in rows})
         atomic_write(MEASURE_DIR / f"{stack}.measure",
-                     f"# head {head_label()}\n" + "".join(f"{u} {c} {t} {k}\n" for u, c, t, k in rows))
+                     f"# head {head_label()}\n" + "".join(f"{u} {c} {t} {k}\n" for u, c, t, k in merged.values()))
     base: list[str | None] = []  # resolved at most once, and only for a zero-covered unit
 
     def base_once() -> str | None:
@@ -335,8 +347,8 @@ def cmd_check(stack: str, whole: bool) -> int:
                            f"add tests, or ask the lead for an exempt row")
         else:
             zero.append(unit)
-    if whole:
-        stale += [u for u in floor_of if u not in seen and u not in exempt]
+    # a unit the driver reused (its inputs are unchanged and its last run was green) sends no line: only a dir gone is stale
+    stale += [u for u in floor_of if u not in seen and u not in exempt and not os.path.isdir(u)]
     for line in refused:
         err(line)
     if stale:

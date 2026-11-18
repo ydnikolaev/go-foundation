@@ -1,7 +1,9 @@
 # managed by devkit — do not edit; fix upstream in ~/Developer/projects/devkit
-# The go pack's selection: a changed Go file or module file runs kit-go-test on that module. Read after config/check-map.
-**/*.go kit-go-test
-**/go.mod kit-go-test
-**/go.sum kit-go-test
+# The go pack's selection: a changed Go file or module file runs kit-go-lint (gofmt, go mod tidy, golangci-lint) and kit-go-test on that
+# module. Read after config/check-map. kit-go-test is a set of units (one per package dir): scripts/kit/go-test.sh lists and runs them.
+**/*.go kit-go-lint kit-go-test
+**/go.mod kit-go-lint kit-go-test
+**/go.sum kit-go-lint kit-go-test
 .golangci.yml kit-go-lint
 @test-gate kit-go-test
+@units kit-go-test scripts/kit/go-test.sh

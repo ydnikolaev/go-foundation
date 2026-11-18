@@ -15,8 +15,11 @@ Rules
              specifier of `import … from 'x'`, `import 'x'`, `export … from 'x'`, `import('x')`, `require('x')` and
              `import x = require('x')`, across line breaks
   relative   `./x`, `../x` resolve from the importing file's directory
-  tsconfig   the root `tsconfig.json` `compilerOptions.baseUrl` and `paths` (comments and trailing commas stripped;
-             `extends` is not followed): a bare specifier tries `paths` (the longest matching prefix), then `baseUrl`
+  tsconfig   the importing file's nearest `tsconfig.json` (walking up to the root), its `extends` chain (relative paths
+             inside the repo; a package name is not followed) and `compilerOptions.baseUrl` and `paths` (comments and
+             trailing commas stripped; a child's value replaces its parent's; `baseUrl` is relative to the file that sets it,
+             `paths` to the effective `baseUrl`, else to the file that sets them): a bare specifier tries `paths` (the
+             longest matching prefix), then `baseUrl`. `Resolver.chain(file)` lists the tsconfigs a file's resolution read
   workspace  the root `package.json` `workspaces` (a list, or an object's `packages`) and the `packages:` lines of
              `pnpm-workspace.yaml` name workspace dirs (globs such as `packages/*` expand over the listed
              package.json dirs; a `!` line excludes). Each dir's `package.json` `name` maps `<name>` and
@@ -28,7 +31,7 @@ Rules
   red        a root tsconfig.json or package.json that does not parse stops the lister: exit 1, stderr names it
 
 Known gaps: JSX text and regex literals can be misread by the quote-skipping tokenizer (a regex is guessed from the
-token before the `/`); `extends` in tsconfig is not followed; `exports` subpath patterns, `imports` (`#x`) and
+token before the `/`); an `extends` that names a package is not followed; `exports` subpath patterns, `imports` (`#x`) and
 node_modules links are not read; a package.json that does not parse below the root is skipped.
 """
 from __future__ import annotations
@@ -375,16 +378,7 @@ def workspace_patterns() -> list:
 class Resolver:
     def __init__(self, files: list) -> None:
         self.files = set(files)
-        self.base_url = None
-        self.paths: dict = {}
-        cfg = read_json("tsconfig.json", True)
-        options = cfg.get("compilerOptions") if isinstance(cfg, dict) else None
-        if isinstance(options, dict):
-            if isinstance(options.get("baseUrl"), str):
-                self.base_url = posixpath.normpath(options["baseUrl"])
-            raw = options.get("paths")
-            if isinstance(raw, dict):
-                self.paths = {k: [t for t in v if isinstance(t, str)] for k, v in raw.items() if isinstance(v, list)}
+        self.configs: dict = {}  # folder -> (baseUrl or None, paths, the dir `paths` fall back to, the tsconfig chain)
         self.packages: dict = {}  # name -> (dir, package.json data)
         patterns = workspace_patterns()
         plus = [glob_re(p) for p in patterns if not p.startswith("!")]
@@ -399,6 +393,52 @@ class Resolver:
             if isinstance(data, dict) and isinstance(data.get("name"), str):
                 self.packages[data["name"]] = (folder, data)
         self.names = sorted(self.packages, key=len, reverse=True)
+        self.config("")  # a root tsconfig.json that does not parse stops the lister here
+
+    # tsconfig: the nearest one up from a file, with its `extends` chain
+    def load_config(self, path: str, seen: tuple = ()):
+        cfg = read_json(path, path == "tsconfig.json")
+        if not isinstance(cfg, dict):
+            return None, {}, posixpath.dirname(path) or ".", [path]
+        base, paths, origin, chain = None, {}, posixpath.dirname(path) or ".", [path]
+        parents = cfg.get("extends")
+        for parent in [parents] if isinstance(parents, str) else parents if isinstance(parents, list) else []:
+            if not (isinstance(parent, str) and parent.startswith(".")):
+                continue
+            target = posixpath.normpath(posixpath.join(posixpath.dirname(path), parent))
+            target = target if target.endswith(".json") else target + ".json"
+            if target in seen or target == path or target.startswith("../") or not os.path.isfile(target):
+                continue
+            got = self.load_config(target, seen + (path,))
+            base = base if got[0] is None else got[0]
+            if got[1]:
+                paths, origin = got[1], got[2]
+            chain += got[3]
+        options = cfg.get("compilerOptions")
+        if isinstance(options, dict):
+            if isinstance(options.get("baseUrl"), str):
+                base = posixpath.normpath(posixpath.join(posixpath.dirname(path), options["baseUrl"]))
+            raw = options.get("paths")
+            if isinstance(raw, dict):
+                paths = {k: [t for t in v if isinstance(t, str)] for k, v in raw.items() if isinstance(v, list)}
+                origin = posixpath.dirname(path) or "."
+        return base, paths, origin, chain
+
+    def config(self, source: str):
+        folder = posixpath.dirname(source)
+        while folder not in self.configs:
+            path = posixpath.join(folder, "tsconfig.json")
+            if os.path.isfile(path):
+                self.configs[folder] = self.load_config(path)
+            elif folder in ("", "."):
+                self.configs[folder] = (None, {}, ".", [])
+            else:
+                folder = posixpath.dirname(folder)
+        return self.configs[folder]
+
+    def chain(self, source: str) -> list:
+        """The tsconfig files that decide how `source`'s specifiers resolve (its nearest one and what it extends)."""
+        return self.config(source)[3]
 
     # file lookup
     def probe_file(self, path: str):
@@ -451,9 +491,10 @@ class Resolver:
                 return got
         return self.probe_dir(folder)
 
-    def alias(self, spec: str):
+    def alias(self, spec: str, cfg: tuple):
+        base, paths, origin, _chain = cfg
         best, score, picks = None, -1, []
-        for pattern, targets in self.paths.items():
+        for pattern, targets in paths.items():
             if "*" in pattern:
                 pre, post = pattern.split("*", 1)
                 if len(spec) >= len(pre) + len(post) and spec.startswith(pre) and spec.endswith(post):
@@ -463,17 +504,18 @@ class Resolver:
             elif pattern == spec:
                 best, score, picks = pattern, 10 ** 6, list(targets)
         for pick in picks:
-            got = self.path(posixpath.join(self.base_url or ".", pick))
+            got = self.path(posixpath.join(base if base is not None else origin, pick))
             if got:
                 return got
         return None
 
-    def bare(self, spec: str):
-        got = self.alias(spec)
+    def bare(self, spec: str, source: str):
+        cfg = self.config(source)
+        got = self.alias(spec, cfg)
         if got:
             return got
-        if self.base_url is not None:
-            got = self.path(posixpath.join(self.base_url, spec))
+        if cfg[0] is not None:
+            got = self.path(posixpath.join(cfg[0], spec))
             if got:
                 return got
         for name in self.names:
@@ -490,7 +532,7 @@ class Resolver:
             return None
         if spec == "." or spec == ".." or spec.startswith("./") or spec.startswith("../"):
             return self.path(posixpath.join(posixpath.dirname(source), spec))
-        return self.bare(spec)
+        return self.bare(spec, source)
 
 
 def main() -> int:
