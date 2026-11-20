@@ -12,11 +12,14 @@ A tier is derived, in this order: needs (docker, a browser, a database) is slow;
 UNIT_S seconds is slow. Price is the lowest wall of the green rows that ran among the unit's newest WINDOW rows (a cached row
 is a green and never a price); none green: the highest wall, and a killed row is slow outright; no row: UNIT_S. A name decides
 only a target with no row yet (check-select). A unit runs unless `green(digest, tier)` answers: a light row answers a light ask
-only, a full row both. The light tier runs the unit-tier units cheapest first within the budget (UNITS_BUDGET_S, else LIGHT_S
-of summed price) and prints `left for check-full: <stack>:<id>` for the rest; the full tier runs every unit with no full row.
-A run with --filter proves no unit and writes no row; typed units always run, at full. `--tests` asks every stack that registers
-`@units` which units it lists, hands each typed unit to the stack that lists it (none, or two: usage) and drives each stack with
-its own units; it is `make test TESTS=<unit>...`, whose RUN= is the --filter. Exit: 0 green, 1 red, 2 usage.
+only, a full row both; a full ask reuses none while the stack's coverage measure here is not of this tree (FB-1212), and the
+digest holds the Go test tags (FB-1217). The light tier runs the unit-tier units cheapest first within the budget (UNITS_BUDGET_S,
+else LIGHT_S of summed price) and prints `left for check-full: <stack>:<id>` for the rest; the full tier runs every unit with no full row.
+A directory in KIT_CHECK_PATHS narrows either tier to the units under it (a file there narrows the light tier only).
+A run with --filter proves no unit and writes no row; typed units always run, at full. `--tests` asks each stack that registers
+`@units` and whose map inputs hold a file the typed paths name (or that no map row names) which units it lists, hands each typed
+unit to the stack that lists it (none, or two: usage) and drives each stack with its own units; it is `make test TESTS=<unit>...`,
+whose RUN= is the --filter. Exit: 0 green, 1 red, 2 usage.
 Stdlib only, python3 >= 3.9, POSIX."""
 from __future__ import annotations
 
@@ -137,13 +140,19 @@ def adapter_of(cs, root: Path, stack: str) -> tuple[str, str]:
 
 
 def dispatch(typed: list[str], filt: str) -> int:
-    """`make test TESTS=<unit>...`: each typed unit goes to the stack that lists it; the worst exit of the stacks driven."""
+    """`make test TESTS=<unit>...`: each typed unit goes to the stack that lists it; the worst exit of the stacks driven. Only a
+    stack whose set target's map inputs hold a file the typed paths name is asked (FB-1202), or one no row maps (no inputs to judge)."""
     cs = selector()
     root = Path(cs.git_out("rev-parse", "--show-toplevel")).resolve()
     os.chdir(str(root))
+    t, map_rows = cs.tree(root), cs.load_rows(root, [])
+    plan, _ = cs.plan(t, map_rows, cs.load_registry(root, [], t.paths))
+    named, files = {name for row in map_rows for name in row.targets}, set(t.under(typed))
     owners: dict[str, list[str]] = {}
     for path in cs.map_files(root, []):
-        for adapter in dict.fromkeys(directives([cs.read(path)])[0].values()):
+        sets = directives([cs.read(path)])[0]
+        for adapter in dict.fromkeys(adapter for target, adapter in sets.items()
+                                     if (files & plan[target].inputs if target in plan else target not in named)):
             code, out = call([adapter, "units", "--list"], True)
             if code != 0:
                 raise cs.Stop(2, f"{TAG} {adapter} units --list exited {code}")
@@ -175,8 +184,11 @@ def drive(stack: str, typed: list[str], filt: str) -> int:
     listed = {str(unit["id"]): unit for unit in cs.parsed(out) if unit.get("id")}
     if unknown := [name for name in typed if name not in listed]:
         raise cs.Stop(2, f"{TAG} {stack}: no unit {unknown[0]}")
-    book, changed = history(cs.rows()), set(os.environ.get("KIT_CHECK_PATHS", "").split("\n")) - {""}
-    set_inputs = None
+    book = history(cs.rows())
+    asked = {name.strip().removeprefix("./").strip("/") or "." for name in os.environ.get("KIT_CHECK_PATHS", "").split("\n") if name.strip()}
+    dirs = {name for name in asked if name not in t.files and t.under([name])}  # FB-1204: a dir selects the units under it, both tiers
+    changed = asked - dirs
+    set_inputs, stale = None, tier == "full" and target in cs.unmeasured()  # FB-1212: no unit reuse while the measure is stale
     todo, digests, reused, left, costs = [], {}, [], [], {}
     for uid in typed or listed:
         unit, name = listed[uid], f"{stack}:{uid}"
@@ -184,10 +196,11 @@ def drive(stack: str, typed: list[str], filt: str) -> int:
             plan, _ = cs.plan(t, cs.load_rows(root, []), cs.load_registry(root, [], t.paths))
             set_inputs = sorted(plan[target].inputs) if target in plan else t.paths
         inputs = t.under(unit["inputs"] if unit.get("inputs") is not None else set_inputs)
-        if ask == "light" and changed and not changed & set(inputs):
-            continue  # the diff does not reach it; a unit never run stays for check-full
+        if not typed and (dirs or ask == "light" and changed) and not (
+                changed & set(inputs) or any(d == "." or uid == d or uid.startswith(d + "/") for d in dirs)):
+            continue  # neither the diff nor a named dir reaches it; a unit never run stays for check-full
         digests[uid] = cs.digest(name, inputs)
-        hit = None if typed or tier == "sweep" else cs.green(digests[uid], ask)
+        hit = None if typed or tier == "sweep" or stale else cs.green(digests[uid], ask)
         if hit is not None:
             reused.append(name)
             cs.say(f"{TAG} reused {name} green {hit.get('ts')}")

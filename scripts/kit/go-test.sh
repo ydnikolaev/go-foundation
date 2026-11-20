@@ -641,7 +641,8 @@ if [ "$mode" = run ]; then
   cat $res_files >"$out" 2>/dev/null
   if [ -n "$missing" ]; then sed -i.bak 's/"exit": 0/"exit": 1/' "$out" && rm -f "$out.bak"; fi
   if [ -n "$refused" ]; then  # a refused floor is a red package: the store must not hold it green
-    awk -v ids="$refused" 'BEGIN { n = split(ids, a, "\n"); for (i = 1; i <= n; i++) bad["{\"id\": \"" a[i] "\", \"exit\": 0,"] = 1 }
+    # FB-1205: the ids go through ENVIRON, never `-v`: macOS awk refuses a -v value holding a newline
+    KIT_GO_REFUSED="$refused" awk 'BEGIN { n = split(ENVIRON["KIT_GO_REFUSED"], a, "\n"); for (i = 1; i <= n; i++) bad["{\"id\": \"" a[i] "\", \"exit\": 0,"] = 1 }
       { for (k in bad) if (index($0, k) == 1) sub(/"exit": 0/, "\"exit\": 1"); print }' "$out" >"$out.new" && mv "$out.new" "$out"
   fi
   red_rows

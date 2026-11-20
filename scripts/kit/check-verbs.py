@@ -5,17 +5,20 @@
 It hangs on `check`, `check-full` and `check-docker` as a prerequisite in the managed GNUmakefile, which a project's own
 recipe cannot route around, and `devkit update --apply` runs it after a render. It reads make's own database
 (`make -pRrq :`, nothing runs, never printed: it holds the environment) and judges six static rules, no time:
-V1 names (a required verb missing, a synonym of `check` defined), V2 shape (no recipe on a verb outside a managed file;
+V1 names (a required verb missing, a synonym of `check` defined, a goal of the project whose recipe runs what a kit goal
+runs: `retire: <goal> -> <kit goal>`, kept by a `<goal>: <reason>` row of config/goal-keep.list), V2 shape (no recipe on a verb outside a managed file;
 `check` is `kit-verbs` plus CHECK_EXTRA; the `check-full` tier line; `e2e` only in the e2e module; no `.WAIT` below make 4.4),
 V3 reach (`check` reaches no other verb, no `check-<scope>`, no docker goal; one make builds each target: a check-select target
 reaches no other and no gate item, and no recipe is reached by two of the gate's makes), V4 stack paths (a project map row does not hide a stack's tests), V5 lists
 (heavy_targets, light_targets, docker_targets name no verb), V6 orphans (a map row, an `@every` line or a list names a target
 the database lacks; CHECK_DOCKER with no check-docker rule). A refusal prints `file:line` and exits 1. A file whose first
 line carries another tool's managed header is not the project's to edit: its names are one `finding:` line, exit 0.
-Exit: 0 holds, 1 refused, 2 the database or a map could not be read. Stdlib only, python3 >= 3.9, POSIX."""
+Exit: 0 holds, 1 refused, 2 the database or a map could not be read. `--retire` prints the retire hits as JSON and judges
+nothing (the update menu reads it). Stdlib only, python3 >= 3.9, POSIX."""
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 import re
 import shlex
@@ -29,9 +32,13 @@ REQUIRED = ("help", "check", "check-full", "test", "lint", "fmt")
 VERBS = (*REQUIRED, "check-docker", "check-only", "sweep", "e2e")
 SYNONYMS = ("check-fast", "check-quick", "check-light", "check-diff", "check-for-diff", "check-changed", "check-all", "ci", "verify")
 SHAPED = ("check", "check-full", "check-docker", "test", "lint", "fmt")  # no recipe outside a managed file
+KEEP = "config/goal-keep.list"  # project-owned seed: `<goal>: <reason>` per line, `#` lines and blank lines ignored
+RETIRE = (("go test", "kit-go-test", "go"), ("gofmt", "kit-go-fmt", "go"), ("go get", "kit-go-add", "go"), ("go mod tidy", "kit-go-add", "go"),
+          ("compose postgres", "kit-testdb-up", "docker"))  # (what a recipe line runs, the kit goal that does it, the module of that goal)
 SHAPE = "`check: $(CHECK_EXTRA)`, `check-full: KIT_TIER := full` and `check-full: $(CHECK_EXTRA) $(CHECK_FULL)`, no recipe"
 NEXT = {
-    "V1": "next: delete the synonym (and its script) or rename it `<name>-check`; copy the seed lines of the missing verb",
+    "V1": "next: delete the synonym (and its script) or rename it `<name>-check`; copy the seed lines of the missing verb; "
+          f"for a `retire:` line delete the goal and run the kit goal, or keep it as `<goal>: <reason>` in {KEEP}",
     "V2": f"next: the seed is {SHAPE}; copy a missing line into the Makefile; extend a verb with CHECK_EXTRA, CHECK_FULL, CHECK_DOCKER, LINT_ALL, FMT_ALL or a config/check-map row",
     "V3": "next: `check` is the light gate: move the goal to an `@every` line, CHECK_FULL or CHECK_DOCKER, or rename a gate `<name>-check`",
     "V4": "next: name the stack's target in the row (`<glob> <pack target> <yours>`), or delete the row: the pack's rows then apply",
@@ -58,6 +65,7 @@ class Rule:
         self.prereqs: list[str] = []
         self.origin = ""  # `file:line` of the recipe, none for a rule with no recipe
         self.vars: list[tuple[str, str]] = []  # target-specific `VAR := value`
+        self.recipe: list[str] = []  # the recipe lines as written, a `\` continuation joined to its line
 
 
 class Database:
@@ -81,13 +89,20 @@ class Database:
             lines = block.strip("\n").splitlines()
             if not lines or lines[0].startswith("# Not a target"):
                 continue
-            rule = None
+            rule, body = None, False
             for line in lines:
                 if line.startswith("#"):
                     found = RECIPE.search(line)
                     if found and rule is not None:
-                        rule.origin = f"{found[1]}:{found[2]}"
-                elif line and not line.startswith("\t"):
+                        rule.origin, body = f"{found[1]}:{found[2]}", True
+                elif line.startswith("\t"):
+                    if rule is not None and body:
+                        last = rule.recipe[-1] if rule.recipe else ""
+                        if (len(last) - len(last.rstrip("\\"))) % 2 == 1:  # the line before ends in a `\`: this one continues it
+                            rule.recipe[-1] = f"{last[:-1]} {line.strip()}"
+                        else:
+                            rule.recipe.append(line.lstrip("\t"))
+                elif line:
                     var, plain = SPECIFIC.match(line), RULE.match(line)
                     name = (var or plain).group(1) if (var or plain) else ""
                     if name and not name.startswith("."):
@@ -170,6 +185,81 @@ def foreign(db: Database, name: str) -> bool:
     return bool(rule and rule.origin and owner(rule.origin) not in ("", "devkit"))
 
 
+QUOTED = re.compile(r"\"[^\"]*\"|'[^']*'")
+GAP = re.compile(r"&&|\|\||[;|&\n`(){}$]+")
+LEAD = {"env", "time", "exec", "nice", "command", "then", "do", "else", "if", "elif", "while", "until", "!"}
+
+
+def commands(line: str) -> list[list[str]]:
+    """The commands a recipe line runs, as word lists (the command word first): `@`, `-` and `+` marks, `VAR=x` words, quoted text,
+    a trailing comment and `$(GO)` (read as go) dealt with; `;`, `&&`, `||`, `|`, `$(` and the like end a command."""
+    text = re.sub(r"\$[({](GO|GOFMT)[)}]", lambda m: m[1].lower(), line)
+    text = re.sub(r"(^|\s)#.*", "", QUOTED.sub('""', text))
+    out = []
+    for part in GAP.split(text):
+        words = [w.lstrip("@-+") if n == 0 else w for n, w in enumerate(part.split())]
+        while words and (words[0] in LEAD or not words[0] or re.match(r"^[A-Za-z_]\w*=\S*$", words[0])):
+            words.pop(0)
+            words[:1] = [words[0].lstrip("@-+")] if words else []
+        if words:
+            out.append([os.path.basename(words[0]), *words[1:]])
+    return out
+
+
+def runs(line: str) -> list[str]:
+    """Which of RETIRE's `what` a recipe line runs as a command word (a `docker compose up` needs postgres in the line or in its -f file)."""
+    found = []
+    for words in commands(line):
+        args = [w for w in words[1:] if not w.startswith("-")]
+        if words[0] == "go" and args[:1] == ["test"]:
+            found.append("go test")
+        elif words[0] == "gofmt" or (words[0] == "go" and args[:1] == ["fmt"]):
+            found.append("gofmt")
+        elif words[0] == "go" and args[:1] == ["get"]:
+            found.append("go get")
+        elif words[0] == "go" and args[:2] == ["mod", "tidy"]:
+            found.append("go mod tidy")
+        elif (words[0] == "docker" and args[:1] == ["compose"] or words[0] == "docker-compose") and ({"up", "start"} & set(words[1:])):
+            files = [words[i + 1] for i, w in enumerate(words[:-1]) if w in ("-f", "--file")] + [w.split("=", 1)[1] for w in words if w.startswith("--file=")]
+            texts = [line] + [Path(f).read_text(encoding="utf-8", errors="replace") for f in files if Path(f).is_file()]
+            if any("postgres" in t.lower() for t in texts):
+                found.append("compose postgres")
+    return found
+
+
+def keep_rows() -> tuple[dict[str, str], list[str]]:
+    """config/goal-keep.list: ({goal: reason}, refusals). A row with no reason is refused with its line number and keeps nothing."""
+    keep, refused = {}, []
+    try:
+        lines = Path(KEEP).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return keep, refused
+    for number, raw in enumerate(lines, 1):
+        row = raw.strip()
+        if not row or row.startswith("#"):
+            continue
+        goal, colon, reason = (part.strip() for part in row.partition(":"))
+        if goal and reason:
+            keep[goal] = reason
+        else:
+            refused.append(f"{TAG} V1 {KEEP}:{number}: `{row}` " + ("has no reason" if goal and colon else "is no `<goal>: <reason>` row")
+                           + "; write why the goal stays, or delete the row")
+    return keep, refused
+
+
+def retire_hits(db: Database) -> list[dict[str, str]]:
+    """Each goal of the project (its recipe is in a file the project owns) whose recipe runs what a kit goal of the database runs,
+    unless a keep row holds it: {goal, kit, module, at (file:line)}."""
+    keep, hits = keep_rows()[0], []
+    for goal, rule in sorted(db.rules.items()):
+        if not rule.origin or owner(rule.origin) != "" or goal in keep:
+            continue
+        ran = {what for line in rule.recipe for what in runs(line)}
+        for kit, module in dict.fromkeys((k, m) for what, k, m in RETIRE if what in ran and db.defined(k)):
+            hits.append({"goal": goal, "kit": kit, "module": module, "at": rule.origin})
+    return hits
+
+
 def v1(db: Database, goals: list[str]) -> list[str]:
     held = lambda name: name in db.rules if name in ("test", "lint", "fmt") else db.defined(name)  # `lint` is bare while LINT_ALL is empty
     out = [f"{TAG} V1 {name}: not defined (the seed Makefile has it)" for name in REQUIRED if not held(name)]
@@ -180,6 +270,7 @@ def v1(db: Database, goals: list[str]) -> list[str]:
     for name in SYNONYMS:
         if name in db.rules and not foreign(db, name):
             out.append(f"{TAG} V1 {where(db, name)}: {name} is a second name for check or check-full; delete it")
+    out += keep_rows()[1] + [f"{TAG} V1 {hit['at']}: retire: {hit['goal']} -> {hit['kit']}" for hit in retire_hits(db)]
     return out
 
 
@@ -324,6 +415,13 @@ def findings(db: Database) -> list[str]:
 
 def main() -> int:
     root = Path.cwd()
+    if sys.argv[1:] == ["--retire"]:  # what the update menu reads: the one detector, never a copy of its rule
+        try:
+            print(json.dumps({"retire": retire_hits(database()), "keep": keep_rows()[1]}))
+        except Unreadable as stop:
+            print(stop, file=sys.stderr)
+            return 2
+        return 0
     cs = load("select")
     try:
         db = database()

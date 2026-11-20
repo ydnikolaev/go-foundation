@@ -4,7 +4,9 @@
 # Usage:   scripts/kit/cache-trim.sh [--dry-run] [--force] [--auto]
 #   --auto     run at most once per 24h per checkout family (stamp <main checkout>/.artifacts/stamps/cache-trim, beside the
 #              shared caches: a trim from any worktree counts; an old per-checkout stamp is ignored, never deleted);
-#              --force ignores the stamp; a build cache over 2x its cap (hard, DK-071) bypasses it
+#              --force ignores the stamp; a build cache over 2x its cap (hard, DK-071) bypasses it. It never runs `go clean
+#              -cache` or `go clean -modcache` (FB-1241, FB-1252: a sibling worktree may be reading them): over a cap it ages
+#              build files out and names `make cache-trim`
 #   lock       one trim at a time per family (mkdir <stamp dir>/cache-trim.lock, held for the run, stale after 1h): the
 #              loser prints one skip line, exit 0, no stamp; --force does not override. Builds are not locked (see busy)
 #   --dry-run  report what would happen, change nothing, write no stamp
@@ -200,11 +202,17 @@ run_clean() { # run_clean <label> <cmd...>
   if [ "$dry" -eq 1 ]; then note "would clean $label"; return; fi
   if "$@" >/dev/null 2>&1; then note "cleaned $label"; else note "$label clean failed"; fi
 }
+# FB-1241: --auto never cleans the whole build cache. `go clean -cache` removes fresh entries and their directories too, so a go
+# of a sibling worktree the busy scan did not see (started after it) loses an entry it already looked up and fails with a missing
+# cache file. The age delete above stays (go marks an entry used on lookup, so a file older than the age is one nobody reads);
+# the cap is the manual trim's: `make cache-trim`.
 if [ -d "$GOCACHE" ] && over "$(kb "$GOCACHE")" "$build_cap"; then
-  if command -v go >/dev/null 2>&1; then run_clean "build cache (>${build_cap}GB)" go clean -cache; else note "go missing, build cache not cleaned"; fi
+  if [ "$auto" -eq 1 ]; then note "build cache over ${build_cap}GB left for \`make cache-trim\` (a sibling build may read it)"
+  elif command -v go >/dev/null 2>&1; then run_clean "build cache (>${build_cap}GB)" go clean -cache; else note "go missing, build cache not cleaned"; fi
 fi
 if [ -d "$GOMODCACHE" ] && over "$(kb "$GOMODCACHE")" "$mod_cap"; then
-  if command -v go >/dev/null 2>&1; then run_clean "mod cache (>${mod_cap}GB)" go clean -modcache; else note "go missing, mod cache not cleaned"; fi
+  if [ "$auto" -eq 1 ]; then note "mod cache over ${mod_cap}GB left for \`make cache-trim\` (FB-1252: a sibling build may read it)"
+  elif command -v go >/dev/null 2>&1; then run_clean "mod cache (>${mod_cap}GB)" go clean -modcache; else note "go missing, mod cache not cleaned"; fi
 fi
 if [ -d "$GOLANGCI_LINT_CACHE" ] && over "$(kb "$GOLANGCI_LINT_CACHE")" "$lint_cap"; then
   if command -v golangci-lint >/dev/null 2>&1; then run_clean "golangci cache (>${lint_cap}GB)" golangci-lint cache clean; else note "golangci-lint missing, its cache skipped"; fi

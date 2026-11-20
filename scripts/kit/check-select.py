@@ -5,9 +5,11 @@
 Map (first match wins): config/check-map, config/check-map.d/*.map, .devkit/check-map.d/*.map; a module check
 (config/modules.ini) adds its deps, [shared] and the registry files to its inputs; `@every <goal>...` names goals whose inputs
 are the whole tree, `@units <target> <adapter>` a target scripts/kit/check-units.py tiers unit by unit. A target runs iff
-`green(digest(name, inputs), tier)` has no answer; rows go to <git common dir>/kit/runs.jsonl, every worktree's store. The tier
+`green(digest(name, inputs), tier)` has no answer; rows go to <git common dir>/kit/runs.jsonl, every worktree's store. The digest
+holds the Go test tags (FB-1217); a full ask reuses no `@units` target whose stack's measure is not of this tree (FB-1212). The tier
 is derived (check-units.py: needs, declared, price): light leaves slow targets and what does not fit 180 s of summed price for
-check-full, with docker unreachable; sweep is full with the store ignored; `--only` runs the named targets as check-full does.
+check-full, with docker unreachable; sweep is full with the store ignored; `--only` runs the named targets as check-full does,
+skips one that rows name but an earlier row hides (one `skipped` line names the pack and that row) and refuses one no row names.
 Clocks KIT_LIGHT_S (900) and KIT_FULL_S (3600) are hang guards: they kill, go red and name the slowest three (a loaded host
 must not trip them).
 Targets run at once up to make's jobserver (a client: one in kit-select's slot, a fifo token per further one), each printed
@@ -274,7 +276,7 @@ def load_registry(root: Path, explicit: list[Path], listed: list[str]):
 
 class Tree:
     """The work tree read once: `files` {path: index blob, or `git hash-object` when dirty or untracked}, sorted `paths`,
-    `untracked`, `clean` (tracked files match the index), `common` (git common dir), the devkit `tag`, the map text, its `sets` and `every`."""
+    `untracked`, `clean` (tracked files match the index), `common` (git common dir), the devkit `tag`, the `maps`, their text, `sets` and `every`."""
     def __init__(self, root: Path, maps: list[Path]) -> None:
         self.files = {}
         for item in nul_list("ls-files", "-s", "-z"):
@@ -292,7 +294,7 @@ class Tree:
         self.common = Path(c) if (c := git_try("rev-parse", "--path-format=absolute", "--git-common-dir")) else None
         found = re.search(r"^_commit:\s*(\S+)", read(root / ".copier-answers.devkit.yml"), re.M)
         self.tag = found.group(1).strip("'\"") if found else ""
-        self.map_text = "".join(read(path) for path in maps)
+        self.maps, self.map_text = maps, "".join(read(path) for path in maps)
         self.sets, self.every = units().directives([read(path) for path in maps])  # `@units` targets, `@every` goals
 
     def under(self, paths) -> list[str]:
@@ -319,9 +321,10 @@ def tree(root: Path | None = None, maps: list[Path] | None = None) -> Tree:
     return _TREE
 
 def digest(name: str, paths) -> str:
-    """sha256 of the name, devkit tag, toolchain (TOOLS' output: Tree.tools), map text and sorted (path, blob) pairs."""
+    """sha256 of the name, devkit tag, toolchain (TOOLS' output: Tree.tools), map text, Go test tags, sorted (path, blob) pairs."""
     t, Tree.tools = tree(), getattr(Tree, "tools", "") or subprocess.run(["sh", "-c", TOOLS], capture_output=True).stdout
-    sha = hashlib.sha256("\0".join((name, t.tag, Tree.tools.decode("utf-8", "replace"), t.map_text, "")).encode("utf-8"))
+    tags = [os.environ.get(key, "") for key in ("KIT_GO_TEST_TAGS_LIGHT", "KIT_GO_TEST_TAGS_FULL")]  # FB-1217: make exports both
+    sha = hashlib.sha256("\0".join((name, t.tag, Tree.tools.decode("utf-8", "replace"), t.map_text, *tags, "")).encode("utf-8"))
     for path in t.under(paths):
         sha.update(f"{path}\0{t.files[path]}\n".encode("utf-8"))
     return sha.hexdigest()
@@ -443,6 +446,19 @@ def plan(t: Tree, rows_: list[Row], reg) -> tuple[dict[str, Target], list[str]]:
     for name in t.every:  # a whole-tree goal: any change reruns it; no path narrows it (own stays empty)
         out.setdefault(name, Target()).inputs.update(t.paths)
     return out, unmapped
+
+def hidden_by(t: Tree, rows_: list[Row], name: str) -> tuple[str, str] | None:
+    """FB-1208: (pack, why) of a target rows name that the plan holds not: an earlier row takes its paths, or no path matches
+    them; None when no row names it."""
+    own = [row for row in rows_ if name in row.targets]
+    if not own:
+        return None
+    pack = Path(own[0].where.rsplit(":", 1)[0]).stem
+    for path in t.paths:
+        if any(glob_match(row.segs, path) for row in own):
+            row = first_row(rows_, path)
+            return pack, f"{row.where} {row.glob} {' '.join(row.targets) or '-'} maps its paths first"
+    return pack, "no path of the tree matches its rows"
 
 def target_env(item: Target, name: str, tier: str) -> dict[str, str]:
     """A running target's KIT_CHECK_PATHS, KIT_COVER_BASE (none on a sweep) and KIT_CHECK_MODULES; never the ambient ones."""
@@ -701,6 +717,13 @@ def listed(prefix: str, paths: list[str], err: bool) -> None:
     if len(paths) > CAP:
         say(f"{TAG} +{len(paths) - CAP} more", err=err)
 
+def unmeasured() -> set[str]:
+    """FB-1212: the `@units` targets of the stacks (a map's stem) whose coverage measure here is not of this tree (cover-gate.py)."""
+    cover = load_beside("cover-gate.py", "kit_cover_gate")
+    here = (git_try("write-tree") or "") if tree().clean else ""  # a dirty tree: no measure is of it
+    stacks = set(cover.unmeasured(here)) if cover is not None else set()
+    return {name for path in tree().maps if path.stem in stacks for name in units().directives([read(path)])[0]}
+
 def cover_config() -> int:
     """The floors files (cover-gate.py `config`, skipped when absent) against the newest green run's tree: 0 or 1."""
     try:
@@ -757,7 +780,8 @@ def execute(args: argparse.Namespace) -> int:
     tier = tier if strict else "light"  # not strict: a full ask runs the light tier, never a full run
     clock(tier)  # a bad clock value stops the run before anything runs
     t = tree(root, map_files(root, explicit))
-    targets, unmapped = plan(t, load_rows(root, explicit), load_registry(root, explicit, t.paths))
+    map_rows = load_rows(root, explicit)
+    targets, unmapped = plan(t, map_rows, load_registry(root, explicit, t.paths))
     tracked = [path for path in unmapped if path not in t.untracked]
     if strict:
         if tracked:
@@ -767,12 +791,15 @@ def execute(args: argparse.Namespace) -> int:
         raise Stop(3, f"{TAG} full tier selected no map target",
                    "next: add a row to config/check-map that a tracked path matches (an unborn or empty tree has none)")
     classes, book = class_lists(root), units().history(rows())
-    if missing := [name for name in args.only if name not in targets]:
+    hidden = {name: why for name in args.only if name not in targets and (why := hidden_by(t, map_rows, name))}
+    if missing := [name for name in args.only if name not in targets and name not in hidden]:
         raise Stop(2, f"{TAG} --only {missing[0]}: not a target of the map")
-    todo, reused, left, room = {}, [], [], None
-    for name in args.only or targets:
+    for name, (pack, why) in hidden.items():
+        say(f"{TAG} skipped {name} (pack {pack}): {why}")
+    todo, reused, left, room, stale = {}, [], [], None, unmeasured() if tier == "full" else set()
+    for name in [name for name in args.only if name not in hidden] if args.only else targets:
         dig = digest(name, targets[name].inputs)
-        hit = None if tier == "sweep" else green(dig, "light" if tier == "light" else "full")
+        hit = None if tier == "sweep" or name in stale else green(dig, "light" if tier == "light" else "full")
         if hit is None:
             todo[name] = dig
         else:

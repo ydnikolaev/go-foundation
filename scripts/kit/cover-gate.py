@@ -47,8 +47,8 @@ sys.dont_write_bytecode = True
 TAG = "cover-gate:"
 KINDS = ("changed", "whole")
 ROAD = "make check-full in this checkout"
-# FB-1179: a clean check-full reuses every unit a green row holds and sends no measure line, so a snapshot taken on a dirty tree (or
-# at another tree) is never replaced by it; `make sweep` is check-full with the store ignored, the one road that re-measures
+# FB-1179: `make sweep` is check-full with the store ignored, so it re-measures every package. FB-1212: a check-full whose snapshot
+# here is absent, taken on a dirty tree or at another tree reuses no unit of that stack either, so it re-measures too
 SWEEP = "if it reuses every unit and measures nothing, `make sweep` re-measures the whole tree"
 MEASURE_DIR = Path(".artifacts") / "coverage"
 STACK = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
@@ -467,8 +467,8 @@ def lane_branch() -> str | None:
 
 
 def unmeasured(tree: str) -> list[str]:
-    """The stacks with a floors file whose whole-tree measure in this checkout is not current for `tree` (the git tree key
-    check-select reuses by): absent, headless, taken on a dirty tree, or taken at a commit of another tree (FB-711)."""
+    """The stacks with a floors file whose whole-tree measure in this checkout is not current for `tree` (check-select's `git
+    write-tree`, "" on a dirty tree): absent, headless, taken on a dirty tree, or at a commit of another tree (FB-711, FB-1212)."""
     missing = []
     for stack in group(coverage_files()):
         path = MEASURE_DIR / f"{stack}.measure"

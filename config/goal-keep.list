@@ -1,0 +1,5 @@
+# Project-owned: devkit seeded this once and never touches it again. Edit freely.
+# `make check` (kit-verbs, scripts/kit/check-verbs.py) prints `retire: <goal> -> <kit goal>` for a goal of yours whose recipe runs
+# what a kit goal runs (go test, gofmt, go get, go mod tidy, a docker compose that starts postgres) and fails. Retire the goal
+# and run the kit goal; or keep yours with one row here: `<goal>: <reason>`. A row with no reason is refused with its line number.
+# A row for a goal that no longer exists is ignored. Lines that start with # and blank lines are ignored.

@@ -26,11 +26,13 @@ sweep: ## check-full with the store ignored: every target runs
 	+@$(MAKE) --no-print-directory check-full KIT_TIER=sweep
 
 # `make test` (the managed GNUmakefile: `test: kit-test`): every registered test target (an `@test-gate` line of a check map)
-# outside CHECK_DOCKER, tier full, reused from the store like `check-only`; no lint. `make test TESTS="<unit> ..."` runs exactly
-# those units, each through the driver of the stack that lists it (scripts/kit/check-units.py --tests), at full, whatever the store
-# holds; RUN=<expr> narrows the run inside each unit and a filtered run writes no row. TESTS and RUN reach the recipe through the
-# environment, never expanded into shell text. `check-only T="<target> ..."` runs exactly these map targets through the store: `reused <target> green <ts>`, or
-# run and record. T is read from the environment, never expanded into shell text. Both are heavy by their names, so the queue
+# outside CHECK_DOCKER, tier full, reused from the store like `check-only`; no lint; a gate the map hides (an earlier row takes its
+# paths) is skipped with one line. `make test TESTS="<unit> ..."` runs exactly those units, each through the driver of the stack
+# that lists it (scripts/kit/check-units.py --tests; only the stacks whose map inputs the paths reach are asked), at full, whatever
+# the store holds; RUN=<expr> narrows the run inside each unit and a filtered run writes no row. TESTS and RUN reach the recipe
+# through the environment, never expanded into shell text. `check-only T="<target> ..."` runs exactly these map targets through the
+# store: `reused <target> green <ts>`, or run and record; a hidden one is skipped by name, one no row names is refused (exit 2).
+# T is read from the environment, never expanded into shell text. Both are heavy by their names, so the queue
 # holds them (`check-%`, `test`).
 .PHONY: kit-test check-only
 

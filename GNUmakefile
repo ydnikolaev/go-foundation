@@ -66,8 +66,11 @@ endif
 ifneq ($(kit_outer),)
 kit_first := $(firstword $(MAKECMDGOALS))
 .PHONY: $(MAKECMDGOALS)
+# The hold's make gets the flags without -j and the jobserver and the command-line variables (the text after ` -- `) as the shell
+# holds them in MAKEFLAGS: make never expands or quotes them here (FB-1242: a `'` broke the line, a `-jx` inside a value was dropped).
+kit_unjob = m=" $$MAKEFLAGS"; f=$${m%% -- *}; t=$${m\#"$$f"}; n=; set -f; for w in $$f; do case $$w in -j*|--jobserver-auth=*) ;; *) n="$${n:+$$n }$$w";; esac; done; set +f
 $(kit_first):
-	+@MAKEFLAGS='$(filter-out -j% --jobserver-auth=%,$(MAKEFLAGS))' python3 $(KIT_HEAVY_RUN) run $(kit_wait)--label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy) $(MAKECMDGOALS)) --cores $(kit_slot_cores) -- $(MAKE) --no-print-directory $(MAKECMDGOALS)
+	+@$(kit_unjob); MAKEFLAGS="$$n$$t" python3 $(KIT_HEAVY_RUN) run $(kit_wait)--label $(if $(word 2,$(MAKECMDGOALS)),multi-$(words $(MAKECMDGOALS)):)$(firstword $(kit_heavy) $(MAKECMDGOALS)) --cores $(kit_slot_cores) -- $(MAKE) --no-print-directory $(MAKECMDGOALS)
 $(filter-out $(kit_first),$(MAKECMDGOALS)): $(kit_first) ;
 else
 ifeq ($(MAKELEVEL)$(HEAVY_RUN_SLOT)$(kit_dev)$(if $(KIT_HEAVY_RUN),,x),0)
