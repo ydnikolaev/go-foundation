@@ -12,6 +12,7 @@ use (
 	./units/gitfixture
 	./units/keyset
 	./units/moderation
+	./units/own-avatar
 	./units/reactions
 	./units/safehttp
 	./units/slogtest

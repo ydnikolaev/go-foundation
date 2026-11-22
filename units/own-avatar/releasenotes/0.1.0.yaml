@@ -1,0 +1,23 @@
+schema: foundation/releasenotes/v1
+version: 0.1.0
+released: unreleased
+headline: First release, an HTTP handler for the signed-in user's own photo, taken from a consumer
+changes:
+  - id: OWN-AVATAR-0100-1
+    kind: feat
+    impact: high
+    subject: Own-photo HTTP handler as a shared unit
+    detail: >-
+      Handler serves the caller's own photo and takes no handle or user id from the request, so no other user's photo is
+      reachable through it. The photo source (AvatarSource), the caller (Caller) and the error classifier are injected;
+      the package imports only the standard library. It answers 200 with the image and a private one-day Cache-Control,
+      404 for no photo, 401 for no caller, 503 for no source and 502 for a failed fetch; its log lines hold the bot id,
+      status and error class, never a user id, name or handle. Taken from a consumer at its own tested state.
+    affects:
+      - meavatar.Handler
+      - meavatar.AvatarSource
+      - meavatar.Caller
+      - meavatar.Path
+    action:
+      scope: none
+      why: A first import has nothing to migrate; the unit README's Install and Wire sections are the steps.

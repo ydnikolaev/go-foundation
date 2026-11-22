@@ -1,0 +1,26 @@
+{
+  "id": "own-avatar",
+  "kind": "primitive",
+  "stack": "go",
+  "summary": "an HTTP handler that serves only the signed-in user's own profile photo",
+  "stability": "experimental",
+  "pairs": [],
+  "keywords": [
+    "own photo",
+    "profile picture",
+    "avatar handler",
+    "signed-in user",
+    "no user id in request",
+    "cache-control private",
+    "photo source interface"
+  ],
+  "use_when": [
+    "serve the current user's own picture; no request can name another user",
+    "answer 404 for no photo, 502 for a failed fetch"
+  ],
+  "not_for": [
+    "serving any user's picture by id or handle: this unit refuses to take one from the request",
+    "fetching, resizing or caching the photo itself: the injected source does that",
+    "authenticating the caller: the injected Caller reads an identity another layer established"
+  ]
+}

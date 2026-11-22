@@ -42,3 +42,5 @@ go/safehttp	fetch an untrusted link without reaching the internal network
 none	parse a CSV file into structs
 none	render a PDF invoice from an HTML template
 none	rate limit incoming HTTP requests per IP address
+go/own-avatar	serve the logged-in user's own profile picture over http so a request can never ask for someone else's
+go/own-avatar	endpoint returning my picture for the current session, 404 when I have none and a private cache header

@@ -11,6 +11,7 @@
 | gitfixture | primitive | experimental | stop Go tests running git from failing at cleanup, and fail the build on a raw git spawn |
 | keyset | primitive | experimental | page a long list with an opaque cursor safe against inserts |
 | moderation | primitive | experimental | member reports, hiding, warnings and mutes with an append-only log |
+| own-avatar | primitive | experimental | an HTTP handler that serves only the signed-in user's own profile photo |
 | reactions | primitive | experimental | one-per-user reaction rules on a target: idempotent put and remove, each answering the count and whether the user's is in it |
 | safehttp | primitive | experimental | HTTP client for URLs you do not control: refuses private, loopback and metadata addresses, caps body and redirects, one lookup per dial |
 | slogtest | primitive | experimental | capture the default slog logger in a test and decode its JSON lines |
