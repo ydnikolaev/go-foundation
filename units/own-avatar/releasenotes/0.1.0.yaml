@@ -1,6 +1,6 @@
 schema: foundation/releasenotes/v1
 version: 0.1.0
-released: unreleased
+released: 2026-11-22
 headline: First release, an HTTP handler for the signed-in user's own photo, taken from a consumer
 changes:
   - id: OWN-AVATAR-0100-1
