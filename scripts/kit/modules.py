@@ -657,8 +657,7 @@ def fresh_problems(root: Path, path: str, target: str) -> list:
         return [f"modules: make {target} is not deterministic ({path})"]
     file = root / path
     if not file.is_file() or file.read_bytes() != got[0]:
-        return [f"modules: {path} is stale; next: make {target}, and name {path} in the lane's area "
-                f"(devkit lane amend <lane> --area {path})"]
+        return [f"modules: {path} is stale; next: make {target}, then commit {path}"]
     return []
 
 

@@ -25,6 +25,25 @@ kit-select:  # `+`: make's -O holds no recursive line, so each target's block pr
 sweep: ## check-full with the store ignored: every target runs
 	+@$(MAKE) --no-print-directory check-full KIT_TIER=sweep
 
+# `kit-check-release`, the gate a release runs (docs runbook step 2; standards/make.md §1): `make check` plus the goals the repo
+# lists in KIT_CRITICAL, its critical paths (space separated make goals; a project's own mk/<area>.mk or Makefile sets them with
+# `+=`). Empty or unset: `make check` alone. The goals run at the light tier (KIT_TIER is never set here). Make expands a rule's
+# prerequisites when it reads the rule, and this file sorts before most project fragments: so the list is read in the recipe,
+# when every file is read, never in a prerequisite line.
+# `check-release` is only the default: a pattern rule (make 4.4 probed), which make tries only for a target with no recipe of its
+# own, so a project's own `check-release:` recipe, in any file and any order, wins with no "overriding recipe" warning. It is a
+# pattern rule on `check-releas%` because a literal name would be an explicit rule and collide; the price is that a typo
+# (`check-releasex`) runs the gate too. The target is not .PHONY (a phony target skips the pattern search), so a file named
+# `check-release` at the root would hide it.
+KIT_CRITICAL ?=
+
+.PHONY: kit-check-release
+
+kit-check-release: check ## make check plus the goals in KIT_CRITICAL (the repo's critical paths), light tier; make check-release runs it unless the project defines its own
+	+@$(if $(strip $(KIT_CRITICAL)),$(MAKE) --no-print-directory $(KIT_CRITICAL),:)
+
+check-releas%: kit-check-release ;
+
 # `make test` (the managed GNUmakefile: `test: kit-test`): every registered test target (an `@test-gate` line of a check map)
 # outside CHECK_DOCKER, tier full, reused from the store like `check-only`; no lint; a gate the map hides (an earlier row takes its
 # paths) is skipped with one line. `make test TESTS="<unit> ..."` runs exactly those units, each through the driver of the stack

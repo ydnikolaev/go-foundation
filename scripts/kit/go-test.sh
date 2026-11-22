@@ -645,6 +645,12 @@ if [ "$mode" = run ]; then
     KIT_GO_REFUSED="$refused" awk 'BEGIN { n = split(ENVIRON["KIT_GO_REFUSED"], a, "\n"); for (i = 1; i <= n; i++) bad["{\"id\": \"" a[i] "\", \"exit\": 0,"] = 1 }
       { for (k in bad) if (index($0, k) == 1) sub(/"exit": 0/, "\"exit\": 1"); print }' "$out" >"$out.new" && mv "$out.new" "$out"
   fi
+  if [ -n "$cover_lines" ]; then  # REUSE: the measure travels with the result; a line of a call that judged none (cover=0) has no figure
+    # the figures go through ENVIRON, never `-v`, for the same reason (FB-1205); a line is `<unit> <covered> <total> <kind>`
+    KIT_GO_COVER="$cover_lines" awk 'BEGIN { n = split(ENVIRON["KIT_GO_COVER"], a, "\n")
+        for (i = 1; i <= n; i++) { split(a[i], f, " "); if (f[1] != "") fig["{\"id\": \"" f[1] "\", "] = f[2] ", " f[3] } }
+      { for (k in fig) if (index($0, k) == 1) sub(/}$/, ", \"cover\": [" fig[k] "]}"); print }' "$out" >"$out.new" && mv "$out.new" "$out"
+  fi
   red_rows
 fi
 

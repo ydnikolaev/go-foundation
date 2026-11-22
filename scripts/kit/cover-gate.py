@@ -18,10 +18,12 @@ refused, both named), and a row moved between files is neither a removal nor a n
 
 A unit is a repo-relative dir (`.` is the root). A figure is integer tenths, `covered * 1000 // total`: no float, no slack.
 
-`check` reads lines `<unit> <covered> <total> <changed|whole>`. A floored unit may not fall below its floor; a unit new at
-the diff base with statements and no covered statement is refused (also with no floors file). `--whole` marks a run of the full tier:
-it also writes the snapshot `.artifacts/coverage/<stack>.measure` that `raise` reads, merged over the last one (a package the
-driver reused sends no line; a row whose dir is gone drops). A floor row with no line is stale only when its dir is gone.
+`check` reads lines `<unit> <covered> <total> <changed|whole|reused>`. A floored unit may not fall below its floor; a unit new at
+the diff base with statements and no covered statement is refused (also with no floors file). `reused` is a unit the driver
+reused: its last green figure is judged against the current floor like `changed`, and refused below it (a floor raised since;
+rerun it); the new-unit check and a zero total are skipped, as they were judged when it ran. `--whole` marks a run of the full
+tier: it also writes the snapshot `.artifacts/coverage/<stack>.measure` that `raise` reads, merged over the last one (a unit
+that sends no line keeps its row; a row whose dir is gone drops). A floor row with no line is stale only when its dir is gone.
 `config` (run by the change selector on every check): each floors file parses, and against the table at the diff base
 (KIT_COVER_BASE, else the tree of check-select.py's newest green run) a floor is not lowered, a row whose dir stands is not removed, and a table
 holding floors is not deleted, unless a new comment gives the reason.
@@ -45,7 +47,7 @@ from pathlib import Path
 sys.dont_write_bytecode = True
 
 TAG = "cover-gate:"
-KINDS = ("changed", "whole")
+KINDS = ("changed", "whole", "reused")
 ROAD = "make check-full in this checkout"
 # FB-1179: `make sweep` is check-full with the store ignored, so it re-measures every package. FB-1212: a check-full whose snapshot
 # here is absent, taken on a dirty tree or at another tree reuses no unit of that stack either, so it re-measures too
@@ -198,7 +200,7 @@ def parse_measure(text: str, where: str) -> list[tuple[str, int, int, str]]:
         fields = line.split()
         ok = len(fields) == 4 and fields[1].isdigit() and fields[2].isdigit() and fields[3] in KINDS
         if not ok or int(fields[1]) > int(fields[2]):
-            raise Usage(f"{where}:{number}: malformed measure line {line!r}: want `<unit> <covered> <total> <changed|whole>`")
+            raise Usage(f"{where}:{number}: malformed measure line {line!r}: want `<unit> <covered> <total> <changed|whole|reused>`")
         rows.append((fields[0], int(fields[1]), int(fields[2]), fields[3]))
     return rows
 
@@ -330,7 +332,10 @@ def cmd_check(stack: str, whole: bool) -> int:
                 continue
             judged += 1
             figure = covered * 1000 // total
-            if figure < floor:
+            if figure < floor and kind == "reused":
+                refused.append(f"coverage: {unit}: its last green measure {fmt(figure)} ({covered} of {total} statements) is under the "
+                               f"floor {fmt(floor)}, raised since it ran; rerun it: make test TESTS={unit}")
+            elif figure < floor:
                 refused.append(f"coverage: {unit}: {fmt(figure)} ({covered} of {total} statements) is below the floor {fmt(floor)}. "
                                f"With no code change, look for a timing branch, a test skipped on a missing env or flag, "
                                f"or a build tag or OS file that differs here (#injected-time)")
@@ -340,7 +345,7 @@ def cmd_check(stack: str, whole: bool) -> int:
         if total == 0:
             continue
         judged += 1
-        if covered > 0:
+        if covered > 0 or kind == "reused":  # a reused unit's new-unit check was judged when it ran
             continue
         known = exists_at(base_once(), unit) if base_once() else None
         if known is False:

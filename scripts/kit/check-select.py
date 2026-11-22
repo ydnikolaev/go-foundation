@@ -4,11 +4,14 @@
 
 Map (first match wins): config/check-map, config/check-map.d/*.map, .devkit/check-map.d/*.map; a module check
 (config/modules.ini) adds its deps, [shared] and the registry files to its inputs; `@every <goal>...` names goals whose inputs
-are the whole tree, `@units <target> <adapter>` a target scripts/kit/check-units.py tiers unit by unit. A target runs iff
+are the whole tree, `@goal <target> <glob>...` a full-tier goal whose inputs are the tracked paths its globs match (the light tier
+leaves it for check-full; a glob that matches none is exit 3), `@units <target> <adapter>` a target scripts/kit/check-units.py tiers unit by unit. A target runs iff
 `green(digest(name, inputs), tier)` has no answer; rows go to <git common dir>/kit/runs.jsonl, every worktree's store. The digest
-holds the Go test tags (FB-1217); a full ask reuses no `@units` target whose stack's measure is not of this tree (FB-1212). The tier
-is derived (check-units.py: needs, declared, price): light leaves slow targets and what does not fit 180 s of summed price for
-check-full, with docker unreachable; sweep is full with the store ignored; `--only` runs the named targets as check-full does,
+is of `digest_parts`: name, devkit tag, tools (uv, python, go, node), map text, the Go test tags (FB-1217) and the values of
+KIT_GO_TEST_FLAGS and KIT_GO_TEST_RUNNER (FB-1303) with the repo root as `<root>`, and the inputs; a target row carries the
+parts and `miss` names the one that moved. A green row FRESH_S (24 h) old answers nothing; a full ask reuses no `@units` target whose stack's measure is not of this tree (FB-1212). The tier
+is derived (check-units.py: needs, declared, never a price): light leaves the slow targets (needs or declared) for check-full, with
+docker unreachable, and reports a run over 180 s without refusing it; sweep is full with the store ignored; `--only` runs the named targets as check-full does,
 skips one that rows name but an earlier row hides (one `skipped` line names the pack and that row) and refuses one no row names.
 Clocks KIT_LIGHT_S (900) and KIT_FULL_S (3600) are hang guards: they kill, go red and name the slowest three (a loaded host
 must not trip them).
@@ -17,6 +20,8 @@ as one block when it ends; `n` in MAKEFLAGS runs nothing. The light and unclasse
 heavy class starts only when they all ended green, one at a time, and stops at its first red; a red run ends on `red <n>:
 <target> (exit <c>), ...`. SIGTERM or SIGINT kills every running target and exits 143 or 130. `--explain <path>...` prints each path's map line (or its module), targets
 and `hit` or `runs`, runs nothing (exit 1 for a path with no row and no module check).
+The run row (no `target`) carries `"scope": "units"` (FB-1323): its `exit` is of the targets kit-select ran, not of `make check`, whose
+CHECK_EXTRA gates run beside it and write no row; no reader takes the row as make check's verdict (a row with no `scope` is the same).
 Exit: 0 green; 1 red; 2 usage or a malformed row; 3 refusal. Stdlib only, python3 >= 3.9, POSIX."""
 from __future__ import annotations
 
@@ -46,13 +51,14 @@ CAP = 10
 FULL_GOALS = ("check-full", "check-docker")
 REGISTRY_FILES = ("config/modules.ini", "scripts/kit/modules.py")
 REFUSE_FULL = "KIT_TIER=full is set by check-full and check-docker only; run one of them as the make goal"
-STALE_DAYS = 7  # a green row older than this is not reused (core/verdict.py STALE_DAYS)
+FRESH_S = 86400  # a green row this old or older answers nothing: each unit runs at least once a day (D-023)
 KEEP_DAYS = 14  # the first append of a day drops rows and logs older than this
 GRACE = 7  # seconds between SIGTERM and SIGKILL of a killed target: core/run.py HOLD_GRACE (no devkit import)
 CLOCKS = {"light": ("KIT_LIGHT_S", 900.0), "full": ("KIT_FULL_S", 3600.0), "sweep": ("KIT_FULL_S", 3600.0)}
-TARGET_ENV = ("KIT_CHECK_PATHS", "KIT_CHECK_MODULES", "KIT_COVER_BASE", "UNITS_BUDGET_S")
+TARGET_ENV = ("KIT_CHECK_PATHS", "KIT_CHECK_MODULES", "KIT_COVER_BASE")
+LIGHT_BUDGET_S = 180  # a light run over this is reported, never refused
 CLASS_ORDER = ("light", "unclassed", "heavy")  # the run order of a tier; the tier itself is units.tier_of
-TOOLS = "uv --version; uv run --no-project --no-python-downloads -q python --version; python3 --version; go version"
+TOOLS = "uv --version; uv run --no-project --no-python-downloads -q python --version; python3 --version; go version; node --version"
 
 # --- vendored from lib/devkit/checks/makefile_wired.py: edit there ---
 TIER_LINE = re.compile(r"^check-full\s*:\s*(?:(?:export|override|private)\s+)*KIT_TIER\s*(?:::=|:=|=)\s*full\s*$")
@@ -137,10 +143,13 @@ def nul_list(*args: str) -> list[str]:
 class Row:
     def __init__(self, where: str, glob: str, targets: list[str]) -> None:
         self.where, self.glob, self.targets = where, glob, targets  # targets empty = `-`
-        self.segs = [None if seg == "**" else seg_regex(seg) for seg in glob.split("/") if seg]
+        self.segs = glob_segs(glob)
 
 def seg_regex(seg: str):
     return re.compile("".join("[^/]*" if ch == "*" else "[^/]" if ch == "?" else re.escape(ch) for ch in seg))
+
+def glob_segs(glob: str) -> list:
+    return [None if seg == "**" else seg_regex(seg) for seg in glob.split("/") if seg]
 
 def glob_match(segs: list, path: str) -> bool:
     """Anchored match of a compiled glob (None = `**`) against a repo-relative path split on `/`."""
@@ -157,8 +166,24 @@ def glob_match(segs: list, path: str) -> bool:
             return False
     return len(parts) in here
 
+def map_name(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
+
+def read_goals(path: Path, root: Path) -> list[tuple[str, str, list[str]]]:
+    """The `@goal <target> <glob>...` lines of a map file as (`file:line`, target, globs); a line with no glob or a flag for a
+    target is malformed (exit 2), as a row is."""
+    name, out = map_name(path, root), []
+    for number, raw in enumerate(read(path).splitlines(), 1):
+        words = raw.split("#", 1)[0].split()
+        if words[:1] != ["@goal"]:
+            continue
+        if len(words) < 3 or words[1].startswith("-") or "=" in words[1]:
+            raise Stop(2, f"{TAG} {name}:{number}: malformed line {' '.join(words)!r}: want `@goal <target> <glob>...`")
+        out.append((f"{name}:{number}", words[1], words[2:]))
+    return out
+
 def read_map(path: Path, root: Path) -> list[Row]:
-    name = path.relative_to(root).as_posix() if path.is_relative_to(root) else str(path)
+    name = map_name(path, root)
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
@@ -231,12 +256,12 @@ def target_class(name: str, heavy_names, docker_names, light_names=None, dev_nam
         return "light"
     return "heavy" if heavy_listed or class_match(name, CLASS_HEAVY) else "unclassed"
 
-def target_tier(name: str, history: list[dict], classes) -> str:
+def target_tier(name: str, classes) -> str:
     """unit or slow: needs (a docker target), then declared (KIT_HEAVY_TARGETS, KIT_LIGHT_TARGETS; `unit` and the light names always),
-    then price; the name (the heavy class) decides only a target with no row yet."""
+    then the name (the heavy class); a price decides nothing."""
     heavy, docker, light, _dev = classes
     declared = "slow" if class_match(name, heavy) else "unit" if name in ("unit", *CLASS_LIGHT) or class_match(name, light) else None
-    return units().tier_of(class_match(name, docker) or name in CLASS_DOCKER, declared, history,
+    return units().tier_of(class_match(name, docker) or name in CLASS_DOCKER, declared,
                            target_class(name, *classes) == "heavy")
 
 def load_beside(file: str, name: str):
@@ -253,7 +278,7 @@ def load_beside(file: str, name: str):
 _UNITS = None
 
 def units():
-    """check-units.py (the tier rule, the price, the cut) loaded by path once; it sits beside this script."""
+    """check-units.py (the tier rule) loaded by path once; it sits beside this script."""
     global _UNITS
     _UNITS = _UNITS or load_beside("check-units.py", "kit_units")
     if _UNITS is None:
@@ -276,9 +301,10 @@ def load_registry(root: Path, explicit: list[Path], listed: list[str]):
 
 class Tree:
     """The work tree read once: `files` {path: index blob, or `git hash-object` when dirty or untracked}, sorted `paths`,
-    `untracked`, `clean` (tracked files match the index), `common` (git common dir), the devkit `tag`, the `maps`, their text, `sets` and `every`."""
+    `untracked`, `clean` (tracked files match the index), `common` (git common dir), the devkit `tag`, the `maps`, their text, `sets`,
+    `every` and `goals`."""
     def __init__(self, root: Path, maps: list[Path]) -> None:
-        self.files = {}
+        self.root, self.files = root, {}
         for item in nul_list("ls-files", "-s", "-z"):
             meta, _, path = item.partition("\t")
             self.files[path] = meta.split()[1]
@@ -296,6 +322,7 @@ class Tree:
         self.tag = found.group(1).strip("'\"") if found else ""
         self.maps, self.map_text = maps, "".join(read(path) for path in maps)
         self.sets, self.every = units().directives([read(path) for path in maps])  # `@units` targets, `@every` goals
+        self.goals = [line for path in maps for line in read_goals(path, root)]  # `@goal` lines: (where, target, globs)
 
     def under(self, paths) -> list[str]:
         """The files `paths` name: each a file, or a directory (every file under it; `.` or empty is the whole tree)."""
@@ -320,14 +347,28 @@ def tree(root: Path | None = None, maps: list[Path] | None = None) -> Tree:
         _TREE = Tree(top, map_files(top, []) if maps is None else maps)
     return _TREE
 
-def digest(name: str, paths) -> str:
-    """sha256 of the name, devkit tag, toolchain (TOOLS' output: Tree.tools), map text, Go test tags, sorted (path, blob) pairs."""
+PART_ORDER = ("name", "tag", "tools", "map", "env", "inputs")
+RECIPE_ENV = ("KIT_GO_TEST_TAGS_LIGHT", "KIT_GO_TEST_TAGS_FULL", "KIT_GO_TEST_FLAGS", "KIT_GO_TEST_RUNNER")  # FB-1217, FB-1303: the recipe's inputs
+
+def sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+def digest_parts(name: str, paths) -> dict[str, str]:
+    """The key's parts, each the sha256 of its own text, in PART_ORDER: the `name`, the devkit `tag`, the `tools` (TOOLS' output,
+    memoized on Tree.tools), the `map` text, the `env` (the RECIPE_ENV values with the repo root as `<root>`, so a path to a
+    checkout keys nothing: two worktrees of one recipe agree) and the `inputs` (sorted path and blob pairs)."""
     t, Tree.tools = tree(), getattr(Tree, "tools", "") or subprocess.run(["sh", "-c", TOOLS], capture_output=True).stdout
-    tags = [os.environ.get(key, "") for key in ("KIT_GO_TEST_TAGS_LIGHT", "KIT_GO_TEST_TAGS_FULL")]  # FB-1217: make exports both
-    sha = hashlib.sha256("\0".join((name, t.tag, Tree.tools.decode("utf-8", "replace"), t.map_text, *tags, "")).encode("utf-8"))
-    for path in t.under(paths):
-        sha.update(f"{path}\0{t.files[path]}\n".encode("utf-8"))
-    return sha.hexdigest()
+    env = [os.environ.get(key, "").replace(str(t.root), "<root>") for key in RECIPE_ENV]
+    text = {"name": name, "tag": t.tag, "tools": Tree.tools.decode("utf-8", "replace"), "map": t.map_text,
+            "env": "\0".join(env), "inputs": "".join(f"{path}\0{t.files[path]}\n" for path in t.under(paths))}
+    return {part: sha(text[part]) for part in PART_ORDER}
+
+def key_of(parts: dict[str, str]) -> str:
+    return sha("".join(parts.values()))
+
+def digest(name: str, paths) -> str:
+    """The sha256 of digest_parts' values, in order."""
+    return key_of(digest_parts(name, paths))
 
 def utc_now() -> datetime.datetime:
     return datetime.datetime.now(datetime.timezone.utc)
@@ -359,7 +400,7 @@ def rows() -> list[dict]:
     return _ROWS
 
 def green(digest: str, tier: str = "light") -> dict | None:
-    """The newest target row of `digest` that proves `tier`, when green and under STALE_DAYS old, else None: a light row
+    """The newest target row of `digest` that proves `tier`, when green and under FRESH_S old, else None: a light row
     answers a light ask only, a full row both, a row with no tier is light; a later red voids a green."""
     for row in reversed(rows()):
         if row.get("digest") != digest:
@@ -369,8 +410,27 @@ def green(digest: str, tier: str = "light") -> dict | None:
         if tier != "light" and row.get("tier") != "full":
             continue
         at = when(row)
-        return row if at is not None and utc_now() - at < datetime.timedelta(days=STALE_DAYS) else None
+        return row if at is not None and utc_now() - at < datetime.timedelta(seconds=FRESH_S) else None
     return None
+
+def miss(name: str, parts: dict[str, str], tier: str = "light") -> str:
+    """Why `name` has no answer, from the newest row whose `target` is `name`: `new` (no row), `red`, `age` (FRESH_S or older),
+    `tier` (a light row, a full ask), `unrecorded` (a row with no `parts`), else the names of the parts that moved, sorted
+    and joined by `+` (`inputs`, `env+tools`). The row's own verdict comes before its parts. "" when the row and `parts`
+    agree: asked of a unit `green` gave none, that is a row `green` cannot see (another digest of the same parts)."""
+    row = next((r for r in reversed(rows()) if r.get("target") == name), None)
+    if row is None:
+        return "new"
+    at = when(row)
+    if row.get("exit") != 0:
+        return "red"
+    if at is None or utc_now() - at >= datetime.timedelta(seconds=FRESH_S):
+        return "age"
+    if tier != "light" and row.get("tier") != "full":
+        return "tier"
+    if not isinstance(row.get("parts"), dict):
+        return "unrecorded"
+    return "+".join(sorted(part for part in parts if row["parts"].get(part) != parts[part]))
 
 def append(row: dict) -> None:
     """Append one row under the flock; the first append of a day prunes first. A failure is one `warn:` line."""
@@ -402,7 +462,9 @@ def prune(path: Path) -> None:
             log.unlink()
 
 def base_tree(target: str | None = None) -> str | None:
-    """The tree of the run that holds the newest green row (of `target`; None: of any run), when git still has it."""
+    """The tree of the run that holds the newest green row (of `target`; None: of any run), when git still has it. A run row
+    says its units were green (`scope: units`, FB-1323), never that `make check` was: CHECK_EXTRA gates run beside kit-select
+    and leave no row; this base is the coverage diff base, which a CHECK_EXTRA red does not touch."""
     found = rows()
     for row in reversed(found):
         if row.get("exit") == 0 and (row.get("target") == target if target else "target" not in row):  # a run row names no target
@@ -445,6 +507,15 @@ def plan(t: Tree, rows_: list[Row], reg) -> tuple[dict[str, Target], list[str]]:
             item.modules.add(module)
     for name in t.every:  # a whole-tree goal: any change reruns it; no path narrows it (own stays empty)
         out.setdefault(name, Target()).inputs.update(t.paths)
+    for where, name, globs in t.goals:  # a full-tier goal: the paths its globs match (they stay their rows' own: no first-match here)
+        item = out.setdefault(name, Target())
+        for glob in globs:
+            segs = glob_segs(glob)
+            found = [path for path in t.paths if glob_match(segs, path)]
+            if not found:
+                raise Stop(3, f"{TAG} {where}: @goal {name} {glob}: no tracked path matches",
+                           "next: fix the glob, or move the goal back to CHECK_FULL (it then runs every time)")
+            item.inputs.update(found)
     return out, unmapped
 
 def hidden_by(t: Tree, rows_: list[Row], name: str) -> tuple[str, str] | None:
@@ -553,12 +624,12 @@ def clock(tier: str) -> tuple[str, float]:
 def make_cmd() -> list[str]:
     return shlex.split(os.environ.get("KIT_MAKE", "") or "make")
 
-def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: str, began: float, classes, room=None,
-            cover: int = 0) -> tuple:
+def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: str, began: float, classes, cover: int = 0,
+            parts: dict[str, dict] | None = None) -> tuple:
     """Run `todo` {target: digest} under the tier's clock and make's jobserver, a target row each: (ran, red, killed, spent).
     Light and unclassed start in that order as slots free and run past a red; heavy starts when they all ended green, one at
-    a time, and stops at its first red; `@units` sets never overlap. Light: docker is unreachable, and a set is handed `room`
-    seconds of price less what earlier sets spent. A red `cover` (coverage-config) opens the red list."""
+    a time, and stops at its first red; `@units` sets never overlap. Light: docker is unreachable. A red `cover` (coverage-config) opens the red list.
+    `parts` {target: digest_parts} go into each target's row."""
     key, limit = clock(tier)
     deadline, sets = began + limit, tree().sets
     groups: dict[str, list[str]] = {name: [] for name in CLASS_ORDER}
@@ -594,8 +665,6 @@ def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: st
         env = target_env(targets[name], name, tier)
         if tier == "light":
             env["DOCKER_HOST"] = units().FENCE  # check never starts docker: a target that calls it is red
-        if room is not None and name in sets:
-            env["UNITS_BUDGET_S"] = f"{max(0.0, room - sum(v for k, v in spent.items() if k in sets)):g}"
         running[name] = threading.Thread(target=work, args=(name, env, log, token, CLOCK()), daemon=True)
         running[name].start()
 
@@ -611,13 +680,14 @@ def run_all(targets: dict[str, Target], todo: dict[str, str], tier: str, run: st
         ran.append(name)
         append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "target": name, "digest": todo[name],
                 "exit": code, "wall_s": wall_s, "free": tier == "sweep", "log": None if scratch else str(log),
-                "tier": "light" if tier == "light" else "full"})
+                "tier": "light" if tier == "light" else "full", **({"parts": parts[name]} if parts and name in parts else {})})
         text = read(log)
         if text:
             sys.stdout.write(text if text.endswith("\n") else text + "\n")
         say(f"{TAG} ran {name} {'killed' if code is None else code} {wall_s:g}")
         if code and tier == "light" and units().FENCE_MARK in text:
-            say(f"next: name {name} in docker_targets", err=True)
+            say(f"next: devkit update --apply --data docker_targets=<the current list>,{name}"
+                " (never edit the answers file by hand: copier then renders nothing)", err=True)
         if code is None:
             stop.set()  # the clock ran out: every running target is killed, nothing more starts
             killed.append(name)
@@ -745,7 +815,7 @@ def explain(paths: list[str], maps: list[str]) -> int:
     t = tree(root, map_files(root, explicit))
     map_rows, reg = load_rows(root, explicit), load_registry(root, explicit, t.paths)
     mapped, _unmapped = plan(t, map_rows, reg)
-    classes, book, code = class_lists(root), units().history(rows()), 0
+    classes, code = class_lists(root), 0
     for path in paths:
         key = path.removeprefix("./")
         row = first_row(map_rows, key)
@@ -757,10 +827,21 @@ def explain(paths: list[str], maps: list[str]) -> int:
             continue
         say(f"{TAG} explain {path}: {f'{row.where} {row.glob}' if row else f'module {reg.of(key)}'} {' '.join(names) or 'no targets'}")
         for name in names:
-            tier = "set" if name in t.sets else target_tier(name, book.get(name, []), classes)
+            tier = "set" if name in t.sets else target_tier(name, classes)
             hit = green(digest(name, mapped[name].inputs if name in mapped else []), "full" if tier == "slow" else "light")
             say(f"{TAG}   {name} {tier} {target_class(name, *classes)} {'hit' if hit else 'runs'}")
     return code
+
+def ignore_artifacts(root: Path) -> None:
+    """FB-1322: `.artifacts/` ignores itself in the tree this run is in (a worktree has no cache-trim stamp to write it):
+    `*` in `.artifacts/.gitignore`, never over an existing file; a write error is one stderr line."""
+    path = root / ".artifacts" / ".gitignore"
+    try:
+        if not path.exists():
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("*\n", encoding="utf-8")
+    except OSError as exc:
+        say(f"warn: {path} not written: {exc}", err=True)
 
 def execute(args: argparse.Namespace) -> int:
     if args.explain:
@@ -775,8 +856,9 @@ def execute(args: argparse.Namespace) -> int:
         raise Stop(3, f"{TAG} {REFUSE_FULL}")
     root = Path(git_out("rev-parse", "--show-toplevel")).resolve()
     os.chdir(str(root))
+    ignore_artifacts(root)
     explicit = [Path(m).resolve() for m in args.map]
-    strict = args.strict or project_has_tiers(root)
+    strict =args.strict or project_has_tiers(root)
     tier = tier if strict else "light"  # not strict: a full ask runs the light tier, never a full run
     clock(tier)  # a bad clock value stops the run before anything runs
     t = tree(root, map_files(root, explicit))
@@ -790,26 +872,25 @@ def execute(args: argparse.Namespace) -> int:
     if tier != "light" and not t.paths:
         raise Stop(3, f"{TAG} full tier selected no map target",
                    "next: add a row to config/check-map that a tracked path matches (an unborn or empty tree has none)")
-    classes, book = class_lists(root), units().history(rows())
+    classes = class_lists(root)
     hidden = {name: why for name in args.only if name not in targets and (why := hidden_by(t, map_rows, name))}
     if missing := [name for name in args.only if name not in targets and name not in hidden]:
         raise Stop(2, f"{TAG} --only {missing[0]}: not a target of the map")
     for name, (pack, why) in hidden.items():
         say(f"{TAG} skipped {name} (pack {pack}): {why}")
-    todo, reused, left, room, stale = {}, [], [], None, unmeasured() if tier == "full" else set()
+    todo, reused, left, stale, parts = {}, [], [], unmeasured() if tier == "full" else set(), {}
     for name in [name for name in args.only if name not in hidden] if args.only else targets:
-        dig = digest(name, targets[name].inputs)
+        parts[name] = digest_parts(name, targets[name].inputs)
+        dig = key_of(parts[name])
         hit = None if tier == "sweep" or name in stale else green(dig, "light" if tier == "light" else "full")
         if hit is None:
             todo[name] = dig
         else:
             reused.append(name)
             say(f"{TAG} reused {name} green {hit.get('ts')}")
-    if tier == "light":  # slow targets and what does not fit LIGHT_S of summed price wait; sets (@units) tier inside
-        kinds = {name: "set" if name in t.sets else target_tier(name, book.get(name, []), classes) for name in todo}
-        costs = {name: units().cost(book.get(name, [])) for name, kind in kinds.items() if kind == "unit"}
-        _taken, over, used = units().cut(costs, units().LIGHT_S)
-        left, room = [name for name, kind in kinds.items() if kind == "slow"] + over, units().LIGHT_S - used
+    goals = {name for _where, name, _globs in t.goals}
+    if tier == "light":  # slow targets (needs or declared) and `@goal` goals wait for check-full; sets (@units) tier inside
+        left = [name for name in todo if name not in t.sets and (name in goals or target_tier(name, classes) == "slow")]
         todo = {name: dig for name, dig in todo.items() if name not in left}
         for name in left:
             say(f"{TAG} left for check-full: {name}")
@@ -819,9 +900,14 @@ def execute(args: argparse.Namespace) -> int:
         return 0
     cover = cover_config()
     run = f"{utc_now():%Y%m%dT%H%M%SZ}-{os.getpid()}"
-    ran, red, killed, spent = run_all(targets, todo, tier, run, began, classes, room, cover)
+    ran, red, killed, spent = run_all(targets, todo, tier, run, began, classes, cover, parts)
     code, total = 1 if red else 0, wall(began)
-    append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "tier": tier,
+    if tier == "light" and total > LIGHT_BUDGET_S:
+        slowest = sorted(spent.items(), key=lambda item: -item[1])[:3]
+        say(f"{TAG} note: light took {total:.0f} s, over its {LIGHT_BUDGET_S} s budget; slowest "
+            + ", ".join(f"{name} {secs:g} s" for name, secs in slowest)
+            + "; declare what belongs after the merge slow (KIT_HEAVY_TARGETS, a unit's tier marker)")
+    append({"run": run, "ts": utc_now().isoformat(timespec="seconds"), "tier": tier, "scope": "units",  # FB-1323: `exit` is of the units only
             "tree": git_try("write-tree") if t.clean else None, "exit": code, "wall_s": total, "killed": killed,
             "ran": ran, "reused": reused})
     if not strict:

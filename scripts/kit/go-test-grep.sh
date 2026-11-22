@@ -5,7 +5,7 @@
 #          Code keeps the explained `//nolint:<linter> // <why>`: .golangci.yml (nolintlint) polices it, not this gate.
 #          A third pattern, `count` (R-271): a line with `go test` and `-count` in the project's own test lines (the root Makefile, mk/*.mk but
 #          mk/kit-*, scripts/ but scripts/kit/, config/check-map, .devkit/config.env) turns the test cache off; use `make kit-go-test-flaky COUNT=<n>`.
-# Usage:   scripts/kit/go-test-grep.sh     (whole tree: tracked and untracked-not-ignored *.go, hits only in *_test.go; vendor/ and testdata/ skipped)
+# Usage:   scripts/kit/go-test-grep.sh     (whole tree: tracked and untracked-not-ignored *.go, hits only in *_test.go; vendor/, testdata/ and .artifacts/ skipped)
 # Output:  one `file:line:text` line per hit on stderr, one summary line. Exit 0 clean, 1 a hit. A red run with a `count` hit ends with a `next:` pointer.
 # The one hatch is the adoption ceiling (FB-932, R-259), which only goes down: with config/go-grep.ceiling (project-owned, written once by
 #          `make kit-go-baseline`) the hits are counted per package and pattern (`nolint`, `sleep`, `count`) and judged by go-ceiling.sh: a key over its
@@ -57,7 +57,7 @@ while IFS= read -r -d '' f; do
         done <<<"$out"
       fi ;;
   esac
-done < <(git ls-files -co --exclude-standard -z -- '*.go')
+done < <(git ls-files -co --exclude-standard -z -- '*.go' ':(exclude).artifacts')  # .artifacts/ is scratch no commit holds (FB-1285)
 
 # The `count` pattern: a `go test` line with `-count` in the project's own test lines (not the managed kit files). Not in the Go file figure.
 counthits=0
@@ -78,7 +78,7 @@ while IFS= read -r -d '' f; do
       counthits=$((counthits + 1))
     done <<<"$out"
   fi
-done < <(git ls-files -co --exclude-standard -z)
+done < <(git ls-files -co --exclude-standard -z -- . ':(exclude).artifacts')
 
 if [ "$mode" = ceiling ]; then
   if [ "$write" -eq 1 ]; then

@@ -29,9 +29,9 @@ from pathlib import Path
 sys.dont_write_bytecode = True  # it loads check-select.py and check-units.py by path: no __pycache__ in scripts/kit/
 TAG = "kit-verbs:"
 REQUIRED = ("help", "check", "check-full", "test", "lint", "fmt")
-VERBS = (*REQUIRED, "check-docker", "check-only", "sweep", "e2e")
+VERBS = (*REQUIRED, "check-docker", "check-only", "check-release", "sweep", "e2e")
 SYNONYMS = ("check-fast", "check-quick", "check-light", "check-diff", "check-for-diff", "check-changed", "check-all", "ci", "verify")
-SHAPED = ("check", "check-full", "check-docker", "test", "lint", "fmt")  # no recipe outside a managed file
+SHAPED = ("check", "check-full", "check-docker", "test", "lint", "fmt")  # no recipe outside a managed file; check-release is a default a project may own
 KEEP = "config/goal-keep.list"  # project-owned seed: `<goal>: <reason>` per line, `#` lines and blank lines ignored
 RETIRE = (("go test", "kit-go-test", "go"), ("gofmt", "kit-go-fmt", "go"), ("go get", "kit-go-add", "go"), ("go mod tidy", "kit-go-add", "go"),
           ("compose postgres", "kit-testdb-up", "docker"))  # (what a recipe line runs, the kit goal that does it, the module of that goal)

@@ -13,7 +13,7 @@ Python 3.10, stdlib + PyYAML (the PEP 723 header above; run it under uv, never a
 docs.py calls devkit in `feature new` (it runs `devkit epic new`, FB-948) and in `check` (the tracker lint, below), and reads no store index: the
 rulings and backlog stores are written, indexed and linted by `devkit rec`, which the make fragment (mk/kit-docs.mk) runs next to this tool once a store index exists.
 Here: the ADR lint and the decisions.md render (only while docs/decisions/ holds ADR files), the work-folder size caps,
-and the cross-reference lint, which resolves ids by file existence.
+the cross-reference lint, which resolves ids by file existence, and the release runbook lint (docs/runbooks/release.md, standards/make.md §5).
 The work-folder trackers have one validator, devkit's: `lint_trackers()` is one call to `$KIT_DEVKIT rec check --trackers`
 (env KIT_DEVKIT, else `devkit` on PATH; core's `tracker.validate` plus the file checks of `records.tracker_file_problems`)
 and returns its lines; no tracker rule is copied here. `check` therefore needs devkit, store index or not: with none found it
@@ -409,6 +409,63 @@ def lint_generated() -> list[str]:
     return out
 
 
+# ---------------------------------------------------------------- release runbook
+RELEASE_RUNBOOK = "docs/runbooks/release.md"
+RELEASE_STEPS = ("## 1. What ships", "## 2. The gate", "## 3. The mark", "## 4. Ship", "## 5. Verify live",
+                 "## 6. Announce and record")
+RELEASE_KEY_LINE = re.compile(r"-\s+(run|proves|on red|owner):(.*)")
+RELEASE_NONE = re.compile(r"none(\s*\(.*\))?")
+RELEASE_CHECK = re.compile(r"make (check|test|e2e)")
+
+
+def lint_release_runbook() -> list[str]:
+    """standards/make.md §5: the six steps of docs/runbooks/release.md, each with run, proves and on red. No file, no problem."""
+    path = root() / RELEASE_RUNBOOK
+    if not path.is_file():
+        return []
+    lines = strip_fences(path.read_text(encoding="utf-8", errors="replace")).splitlines()
+    heads = [n for n, line in enumerate(lines) if line.startswith("## ")]
+    found = [lines[n].rstrip() for n in heads]
+    if found != list(RELEASE_STEPS):
+        return [err(path, f"release runbook: step headings are {', '.join(found) or 'none'}, "
+                          f"want {', '.join(RELEASE_STEPS)}")]
+    out: list[str] = []
+    runs: dict[int, list[str]] = {}  # step number -> its `run` values
+    for i, start in enumerate(heads):
+        n = i + 1
+        end = heads[i + 1] if i + 1 < len(heads) else len(lines)
+        keys: dict[str, list[str]] = {}
+        for line in lines[start + 1:end]:
+            if m := RELEASE_KEY_LINE.fullmatch(line.strip()):
+                keys.setdefault(m.group(1), []).append(m.group(2).strip())
+        for key in ("run", "proves", "on red", "owner"):
+            if key == "owner" and len(keys.get(key, [])) <= 1:
+                continue
+            if not keys.get(key):
+                out.append(err(path, f"step {n}: {key} is missing"))
+            elif len(keys[key]) > 1:
+                out.append(err(path, f"step {n}: {key} is given twice"))
+        runs[n] = keys.get("run", [])
+        for value in runs[n]:
+            if RELEASE_NONE.fullmatch(value):
+                continue
+            cmds = re.findall(r"`([^`]*)`", value)
+            if not cmds:
+                out.append(err(path, f"step {n}: run names no command and is not none"))
+            for cmd in cmds:
+                if not cmd.startswith(("make ", "devkit ")):
+                    out.append(err(path, f"step {n}: run command `{cmd}` is not a make target or a devkit verb "
+                                         "(put it in a target of mk/release.mk)"))
+                elif n >= 4 and RELEASE_CHECK.match(cmd):
+                    out.append(err(path, f"step {n}: `{cmd}` is a check; a tree is checked once, in step 2"))
+    if len(runs[2]) == 1:
+        gate_none = bool(RELEASE_NONE.fullmatch(runs[2][0]))
+        mark = [c for v in runs[3] for c in re.findall(r"`([^`]*)`", v) if c.startswith("devkit release ")]
+        if runs[2][0] != "`make check-release`" and not (gate_none and mark):
+            out.append(err(path, "step 2: the gate is make check-release, or none beside a step 3 that runs devkit release"))
+    return out
+
+
 # ---------------------------------------------------------------- commands
 def cmd_index() -> int:
     changed = []
@@ -426,7 +483,7 @@ def cmd_check(quiet: bool) -> int:
     skip_trackers = trackers_off()
     caps = [e for _, edir in active_epics() for e in lint_caps(edir)]  # an archive is frozen: its record is not trimmed
     problems = (lint_adrs() + ([] if skip_trackers else lint_trackers()) + caps
-                + lint_cross_ref() + lint_generated())
+                + lint_cross_ref() + lint_generated() + lint_release_runbook())
     for line in sorted({w for _, edir in active_epics() for w in warn_caps(edir)}):
         print(line, file=sys.stderr)  # FB-1116: a warning, the exit code is not touched
     for line in sorted(set(problems)):

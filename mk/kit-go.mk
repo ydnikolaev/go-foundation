@@ -64,7 +64,7 @@ CHECK_EXTRA += kit-go-shape
 # T-GO: kit-go-lint is a row of .devkit/check-map.d/go.map (`**/*.go kit-go-lint kit-go-test`), not a CHECK_EXTRA item: a run with changed Go
 # paths (KIT_CHECK_PATHS, light tier, no config/go-lint.ceiling) lints those packages and checks those files and modules; the full tier, a
 # change of .golangci.yml and `make lint` lint every module. It also refuses an unformatted .go file (gofmt -l) and an untidy go.mod
-# (`GOPROXY=off go mod tidy -diff`: a module missing from the cache is a tool failure, exit 2, never a verdict). `make fmt` runs gofmt -w.
+# (`go mod tidy -diff`, offline first; a module missing from the cache is fetched once; a run that still fails with no output is a tool failure, exit 2, never a verdict). `make fmt` runs gofmt -w.
 GOLANGCI_LINT ?= golangci-lint
 LINT_ALL += kit-go-lint
 FMT_ALL += kit-go-fmt
@@ -89,7 +89,7 @@ COUNT ?= 3
 # `make check` is the light tier (-short, the light build tags), `make check-full` the full one (no -short, tag `slow`, KIT_GO_TEST_TAGS_FULL
 # from the Makefile variable above). `make test TESTS=<pkg> RUN=TestX` runs one package, and fails when TestX never ran. The test cache stays on:
 # never -count (a cache off is 3x slower), the flaky goal below is the one place that repeats a test.
-# KIT_GO_TEST_FLAGS adds `go test` flags, KIT_GO_TEST_RUNNER a command prefix that runs before `go test` (FB-957); the test
+# KIT_GO_TEST_FLAGS adds `go test` flags, KIT_GO_TEST_RUNNER a command prefix that runs before `go test` (FB-957); a stored result is reused only under the same flags and runner (FB-1303); the test
 # temp dir is made by the script under the same <base> as GOTMPDIR (R-236, R-273), so GOTMPDIR above stays the one every other go command uses.
 kit-go-test: ## Go tests through the unit driver: the package dirs whose inputs changed (KIT_CHECK_PATHS), -short in the light tier; KIT_GO_TEST_FLAGS, KIT_GO_TEST_RUNNER
 	@python3 scripts/kit/check-units.py go
@@ -110,7 +110,7 @@ kit-go-fmt: ## gofmt -w every tracked .go file (not testdata, vendor, _x or .x)
 # Any non-zero exit of the tool is then a failure to run (exit 2), never judged. Without the file every finding is red, as before.
 # A build error prints as `<path>:1: : # <pkg>` and the linter `(typecheck)` ends the line after it, so a line with no linter takes the
 # first following line that ends in one (else `unknown`).
-kit-go-lint: ## gofmt, go mod tidy (GOPROXY=off) and the golangci-lint v2 baseline (.golangci.yml: govet, errorlint, wrapcheck, nolintlint) in every go.mod dir, the changed packages in a light run; config/go-lint.ceiling counts old findings
+kit-go-lint: ## gofmt, go mod tidy (offline first; a module missing from the cache is fetched once) and the golangci-lint v2 baseline (.golangci.yml: govet, errorlint, wrapcheck, nolintlint) in every go.mod dir, the changed packages in a light run; config/go-lint.ceiling counts old findings
 	@set -f; \
 	mods="$$(git ls-files -co --exclude-standard -- go.mod '*/go.mod' | sort -u)"; \
 	if [ -z "$$mods" ]; then echo "kit-go-lint: no go.mod: nothing to lint"; exit 0; fi; \
@@ -149,10 +149,13 @@ kit-go-lint: ## gofmt, go mod tidy (GOPROXY=off) and the golangci-lint v2 baseli
 	fi; \
 	for dir in $$(printf '%s\n' "$$targets" | cut -f1 | sort -u); do \
 		out="$$(cd "$$dir" && GOPROXY=off go mod tidy -diff 2>"$$errf")"; r=$$?; \
+		if [ "$$r" -ne 0 ] && [ -z "$$out" ]; then \
+			out="$$(cd "$$dir" && go mod tidy -diff 2>"$$errf")"; r=$$?; \
+		fi; \
 		if [ "$$r" -ne 0 ] && [ -n "$$out" ]; then \
 			echo "kit-go-lint: $$dir: go.mod or go.sum is not tidy (go mod tidy):" >&2; printf '%s\n' "$$out" | head -n 20 >&2; fail=1; \
 		elif [ "$$r" -ne 0 ]; then \
-			echo "kit-go-lint: go mod tidy -diff failed in $$dir (GOPROXY=off; a tool failure, not a verdict):" >&2; head -n 10 "$$errf" >&2; exit 2; \
+			echo "kit-go-lint: go mod tidy -diff failed in $$dir (offline, then online; a tool failure, not a verdict):" >&2; head -n 10 "$$errf" >&2; exit 2; \
 		fi; \
 	done; \
 	if [ "$$fail" -ne 0 ]; then exit 1; fi; \
